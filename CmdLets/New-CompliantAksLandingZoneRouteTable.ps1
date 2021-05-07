@@ -17,4 +17,5 @@ function New-CompliantAksLandingZoneRouteTable {
 
     Write-Verbose "Associating AKS Subnet to Azure Firewall"
     az network vnet subnet update -g $Properties.ResourceGroupName --vnet-name $Properties.VnetName --name $Properties.Subnets["Nodes"].Name --route-table $properties.RouteTableName
+    
 }

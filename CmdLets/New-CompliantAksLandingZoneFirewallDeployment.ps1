@@ -94,7 +94,7 @@ function New-CompliantAksLandingZoneFirewallDeployment {
     
     Write-Verbose "Setting Firewall as DNS in the VNet"
     $Properties.Vnet.DhcpOptions.DnsServers += $Properties.Firewall.IpConfigurations.PrivateIpAddress
-    Set-AzVirtualNetwork -VirtualNetwork $Properties.Vnet
+    $Properties.Vnet = Set-AzVirtualNetwork -VirtualNetwork $Properties.Vnet
 
     Write-Verbose "Done setting Firewall as DNS in the VNet"
 

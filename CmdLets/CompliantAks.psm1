@@ -46,10 +46,6 @@ function Get-CompliantAksProperties
         [string] $Location
     )
 
-    # if ($EnvironmentName.Length -gt 12) {
-    #     Write-Error "Environment Name '$EnvironmentName' is too long. It should be shorter than 13 - jumpbox vm name too long" -ErrorAction Stop
-    # }
-    
     Write-Verbose "Creating parameters for environment: '$EnvironmentName'"
     # Define resource names based on EnvironmentName
     $Properties = @{
@@ -97,7 +93,7 @@ function Get-CompliantAksProperties
             }
         }
         TemplateParameterFilePath = "./arm/environments/aks-params-$EnvironmentName.json"
-        WindowsJumpBoxVmName = "$($EnvironmentName)win".Substring(0, 15)
+        WindowsJumpBoxVmName = "$($EnvironmentName)win".Substring(0, 14)
         LinuxJumpBoxVmName = "$($EnvironmentName)lin"
         Vnet = "<PlaceHolder>"
         Firewall = "<PlaceHolder>"
@@ -122,22 +118,25 @@ function New-CompliantAksLandingZone {
 
     $Properties = Get-CompliantAksProperties -EnvironmentName $EnvironmentName -Location $Location
 
-    try {            
+    try 
+    {            
         New-AzResourceGroup -Name $Properties.ResourceGroupName -Location $Properties.Location -Force
         New-CompliantAksManagedServiceIdentity -Properties ([ref]$Properties)
         New-CompliantAksLandingZoneVnet -Properties ([ref]$Properties)
+        New-CompliantAksLandingZoneContainerRegistry -Properties ([ref]$Properties)
         New-CompliantAksLandingZoneLogAnalytics -Properties ([ref]$Properties)
         New-CompliantAksLandingZoneFirewallDeployment -Properties ([ref]$Properties)
         New-CompliantAksLandingZoneRouteTable -Properties ([ref]$Properties)
         New-CompliantAksJumpBox -Properties ([ref]$Properties)
+        New-CompliantAksManagedServiceIdentityPermissions -Properties ([ref]$Properties)
+
         New-CompliantAksParametersTemplateFile -Properties $Properties
+
     }
     finally
     {
         $Properties
-    }
-
-    
+    }   
 
 }
 
@@ -195,78 +194,6 @@ function New-CompliantAksLandingZoneLogAnalytics {
     Write-Verbose "Done creating log analytics workspace. Id: '$($Properties.LogAnalyticsWorkspaceId)'"
 }
 
-function New-CompliantAksLandingZoneRegistry {
-    [CmdletBinding()]
-    Param(
-        [ref]$PropertiesRef
-    )
-    $Properties = $PropertiesRef.Value
-
-    Write-Verbose "Creating Container Registry '$($Properties.LogAnalyticsWorkspaceName)'"
-    $registry = New-AzContainerRegistry `
-            -ResourceGroupName $Properties.ResourceGroupName `
-            -Name $Properties.ContainerRegistryName `
-            -Sku Premium `
-            -Location $Properties.Location `
-    $Properties.ContainerRegistryId = $registry.Id
-
-
-    #$Properties.ContainerRegistryId = (Get-AzContainerRegistry -Name $Properties.ContainerRegistryName -ResourceGroupName $Properties.ResourceGroupName).Id
-
-    New-AzPrivateDnsZone `
-        -ResourceGroupName $Properties.ResourceGroupName `
-        -Name "privatelink.azurecr.io" `
-
-    New-AzPrivateDnsVirtualNetworkLink `
-        -ResourceGroupName $Properties.ResourceGroupName `
-        -ZoneName "privatelink.azurecr.io" `
-        -Name 'AcrDnsLink' `
-        -VirtualNetwork $Properties.Vnet `
-        -EnableRegistration:$false
-
-    $prvEndpointSubnet = $Properties.Vnet.Subnets["PrivateEndpoint"] | ? Name -eq "aks-prvendpt-subnet"
-
-    # Private endpoint does not support policies (ex: NSG) so we need to disable it
-    $prvEndpointSubnet.PrivateEndpointNetworkPolicies = "Disabled"
-    $Properties.Vnet | Set-AzVirtualNetwork 
-
-    # Create the endpoint and the connection to the registry
-    $acrPrivateLinkConnection = New-AzPrivateLinkServiceConnection `
-        -Name 'ACRPrivateLink' `
-        -PrivateLinkServiceId $Properties.ContainerRegistryId `
-        -GroupId 'registry'
-
-    $arcPrivateEndpoint = New-AzPrivateEndpoint `
-        -Name "AcrPrivateEndpoint" `
-        -ResourceGroupName $Properties.ResourceGroupName `
-        -Location $Properties.Location `
-        -Subnet $prvEndpointSubnet `
-        -PrivateLinkServiceConnection $acrPrivateLinkConnection
-
-    # Update the DNS
-    
-    $endpointPrivateIpAddress = $arcPrivateEndpoint.CustomDnsConfigs[1].IpAddresses[0]
-    $Records = New-AzPrivateDnsRecordConfig -IPv4Address $endpointPrivateIpAddress
-    New-AzPrivateDnsRecordSet `
-        -Name $Properties.ContainerRegistryName `
-        -ZoneName "privatelink.azurecr.io" `
-        -ResourceGroupName $Properties.ResourceGroupName `
-        -Ttl 1 `
-        -RecordType A `
-        -PrivateDnsRecord $Records
-    
-    $dataEndpointPrivateIpAddress = $arcPrivateEndpoint.CustomDnsConfigs[0].IpAddresses[0]
-    $Records = New-AzPrivateDnsRecordConfig -IPv4Address $dataEndpointPrivateIpAddress
-    New-AzPrivateDnsRecordSet `
-        -Name "$($Properties.ContainerRegistryName).$($Properties.Location).data" `
-        -ZoneName "privatelink.azurecr.io" `
-        -ResourceGroupName $Properties.ResourceGroupName `
-        -Ttl 1 `
-        -RecordType A `
-        -PrivateDnsRecord $Records
-}
-
-
 function New-CompliantAksParametersTemplateFile {
     [CmdletBinding()]
     Param(
@@ -285,20 +212,20 @@ function New-CompliantAksParametersTemplateFile {
     $params > $Properties.TemplateParameterFilePath 
 }
 
-function New-CompliantAksManagedServiceIdentity {
+function New-CompliantAksManagedServiceIdentityPermissions {
     [CmdletBinding()]
     Param(
         [ref]$PropertiesRef
     )
     $Properties = $PropertiesRef.Value
-    $msi = New-AzUserAssignedIdentity -ResourceGroupName $Properties.ResourceGroupName -Name "$($Properties.EnvironmentName)-msi"
+
     $retry = 3
-    while($retry > 0)
+    while($retry -gt 0)
     {
         try 
         {
             Write-Verbose "Trying to assign MSI to RG..."
-            $ra = New-AzRoleAssignment -ObjectId $msi.PrincipalId -RoleDefinitionName "Contributor" -Scope "/subscriptions/$($Properties.SubscriptionId)/resourceGroups/$($Properties.ResourceGroupName)" -ErrorAction Continue
+            $ra = New-AzRoleAssignment -ObjectId $Properties.MsiPrincipalId -RoleDefinitionName "Contributor" -Scope "/subscriptions/$($Properties.SubscriptionId)/resourceGroups/$($Properties.ResourceGroupName)" -ErrorAction Stop
             $retry = 0
             Write-Verbose "Done trying to assign MSI to RG..."
         }
@@ -307,9 +234,22 @@ function New-CompliantAksManagedServiceIdentity {
             Write-Verbose "Failed to assign MSI to RG. Retries: $retry"
             Write-Error $_ -ErrorAction Continue
             $retry--
+            Start-Sleep -Seconds 10
         }
     }
+
+}
+
+function New-CompliantAksManagedServiceIdentity {
+    [CmdletBinding()]
+    Param(
+        [ref]$PropertiesRef
+    )
+    $Properties = $PropertiesRef.Value
+    $msi = New-AzUserAssignedIdentity -ResourceGroupName $Properties.ResourceGroupName -Name "$($Properties.EnvironmentName)-msi"
+
     $Properties.ClusterRgMsiId = $msi.Id
+    $Properties.MsiPrincipalId = $msi.PrincipalId
 }
 
 function New-CompliantAksConnection {
@@ -402,7 +342,7 @@ function New-CompliantAksJumpBox {
         -SubnetName $Properties.Subnets.JumpBox.Name `
         -Image $imageURN
 
-    Invoke-AzVMRunCommand -ResourceGroupName '<myResourceGroup>' -Name '<myVMName>' -CommandId 'RunPowerShellScript' -ScriptPath '<pathToScript>' -Parameter @{"arg1" = "var1";"arg2" = "var2"}
+    Invoke-AzVMRunCommand -ResourceGroupName $Properties.ResourceGroupName -Name $Properties.WindowsJumpBoxVmName -CommandId 'RunPowerShellScript' -ScriptPath .\CmdLets\New-CompliantAksWinJumpboxConfig.ps1 #-Parameter @{"arg1" = "var1";"arg2" = "var2"}
 
 
     Write-Verbose "Creating Linux JumpBox VM..."
