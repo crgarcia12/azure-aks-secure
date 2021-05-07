@@ -1,0 +1,112 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-08-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "cluster_name": {
+            "type": "String",
+            "defaultValue": ""
+        },
+        "virtual_network_subnet_id": {
+            "type": "String",
+            "defaultValue": ""
+        },
+        "log_analytics_workspace_id": {
+            "type": "String",
+            "defaultValue": ""
+        },
+        "location": {
+            "type": "String",
+            "defaultValue": ""
+        },
+        "kubernetesVersion": {
+            "type": "String",
+            "defaultValue": "1.20.5"
+        },
+        "cluster_rg_msi": {
+            "type": "String",
+            "defaultValue": ""
+        }
+    },
+    "variables": {},
+    "resources": [
+        {
+            "type": "Microsoft.ContainerService/managedClusters",
+            "apiVersion": "2020-12-01",
+            "name": "[parameters('cluster_name')]",
+            "location": "[parameters('location')]",
+            "identity": { 
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                    "[parameters('cluster_rg_msi')]" :{}
+                }
+            },
+            "sku": {
+                "name": "Basic",
+                "tier": "Free"
+            },
+            "properties": {
+                "kubernetesVersion": "[parameters('kubernetesVersion')]",
+                "windowsProfile" : {
+                    "adminUsername": "winadmin",
+                    "adminPassword": "P@ssword123123123"
+                },
+                "aadProfile" : {
+                    "managed": true,
+                    "adminGroupObjectIDs" : ["8dda9002-1249-48ad-8620-4ee582b98f6b"]
+                },
+                "enableRBAC": true,
+                "apiServerAccessProfile": {
+                    "enablePrivateCluster": true
+                },
+                "enablePodSecurityPolicy": false,
+                "networkProfile": {
+                    "networkPlugin": "azure",
+                    "networkPolicy": "calico",
+                    "loadBalancerSku": "Standard",
+                    "outboundType": "userDefinedRouting"
+                },
+                "dnsPrefix": "[concat(parameters('cluster_name'),'-dns')]",
+                "agentPoolProfiles": [
+                    {
+                        "name": "default",
+                        "count": 1,
+                        "vmSize": "Standard_DS2_v2",
+                        "osDiskSizeGB": 30,
+                        "vnetSubnetID": "[parameters('virtual_network_subnet_id')]",
+                        "maxPods": 30,
+                        "type": "VirtualMachineScaleSets",
+                        "availabilityZones": [
+                            "1",
+                            "2",
+                            "3"
+                        ],
+                        "maxCount": 3,
+                        "minCount": 1,
+                        "enableAutoScaling": true,
+                        "orchestratorVersion": "[parameters('kubernetesVersion')]",
+                        "enableNodePublicIP": false,
+                        "mode": "System",
+                        "osType": "Linux"
+                    }
+                ],
+                "addonProfiles": {
+                    "kubeDashboard": {
+                        "enabled": false
+                    },
+                    "omsagent": {
+                        "enabled": true,
+                        "config": {
+                            "logAnalyticsWorkspaceResourceID": "[parameters('log_analytics_workspace_id')]"
+                        }
+                    },
+                    "azurepolicy": {
+                        "enabled": true,
+                        "config": {
+                            "version": "v3"
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

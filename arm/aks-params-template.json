@@ -13,6 +13,9 @@
       },
       "location": {
         "value": "<Location>"
+      },
+      "cluster_rg_msi_id": {
+        "value": "<ClusterRgMsiId>"
       }
     }
   }

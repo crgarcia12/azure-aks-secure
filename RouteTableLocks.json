@@ -1,0 +1,134 @@
+{​​​​
+
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {​​​​}​​​​,
+    "functions": [],
+    "variables": {​​​​}​​​​,
+    "resources": [
+        {​​​​
+            "name": "routetable-lock",
+            "type": "Microsoft.Authorization/locks",
+            "apiVersion": "2016-09-01",
+            "scope": "Microsoft.Network/routeTables/crgar-aks-19-routetable",
+            "properties": {​​​​
+                "level": "CanNotDelete"
+            }​​​​
+        }​​​​,
+        {​​​​
+            "name": "firewallroute-lock",
+            "type": "Microsoft.Authorization/locks",
+            "apiVersion": "2016-09-01",
+            "scope": "Microsoft.Network/routeTables/crgar-aks-19-routetable/routes/firewallroute",
+            "properties": {​​​​
+                "level": "ReadOnly"
+            }​​​​
+        }​​​​
+    ],
+    "outputs": {​​​​}​​​​
+}​​​​
+
+
+// Policies
+// https://raw.githubusercontent.com/Azure/Community-Policy/master/Policies/Network/modify-routetable-nexthopvirtualappliance/azurepolicy.rules.json
+{
+    "if": {
+        "allOf": [
+            {
+                "field": "type",
+                "equals": "Microsoft.Network/routeTables"
+            },
+            {
+                "count": {
+                    "field": "Microsoft.Network/routeTables/routes[*]",
+                    "where": {
+                        "field": "Microsoft.Network/routeTables/routes[*].addressPrefix",
+                        "equals": "0.0.0.0/0"
+                    }
+                },
+                "equals": 0
+            }
+        ]
+    },
+    "then": {
+        "effect": "modify",
+        "details": {
+            "roleDefinitionIds": [
+                "/providers/microsoft.authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7"
+            ],
+            "conflictEffect": "audit",
+            "operations": [
+                {
+                    "operation": "add",
+                    "field": "Microsoft.Network/routeTables/routes[*]",
+                    "value": {
+                        "name": "default",
+                        "properties": {
+                            "addressPrefix": "0.0.0.0/0",
+                            "nextHopType": "VirtualAppliance",
+                            "nextHopIpAddress": "[parameters('routeTableSettings')[field('location')].virtualApplianceIpAddress]"
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}
+
+
+//Add a lock
+{
+    "if": {
+        "allOf": [
+            {
+                "field": "type",
+                "equals": "Microsoft.Network/routeTables"
+            },
+            {
+                "count": {
+                    "field": "Microsoft.Network/routeTables/routes[*]",
+                    "where": {
+                        "field": "Microsoft.Network/routeTables/routes[*].addressPrefix",
+                        "equals": "0.0.0.0/0"
+                    }
+                },
+                "equals": 0
+            }
+        ]
+    },
+    "then": {
+      "effect": "deployIfNotExists",
+      "details": {
+        "type": "Microsoft.Authorization/locks",
+        "roleDefinitionIds": [
+          "/providers/microsoft.authorization/roleDefinitions/{roleDefinitionId}",
+          "/subscriptions/{subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/{ManagedIdentityOfAssignment}"
+        ],
+        "existenceCondition": {
+          "field": "Microsoft.Authorization/locks/level",
+          "equals": "ReadOnly"
+        },
+        "deployment": {
+          "properties": {
+            "mode": "incremental",
+            "template": {
+              "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+              "contentVersion": "1.0.0.0",
+              "resources": [
+                {
+                  "type": "Microsoft.Authorization/locks",
+                  "apiVersion": "2015-01-01",
+                  "name": "DefaultRouteLock",
+                  "properties": {
+                    "level": "ReadOnly",
+                    "notes": "Applied thru policy"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

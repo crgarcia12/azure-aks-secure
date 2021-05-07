@@ -10,6 +10,7 @@ az --upgrade
 az extension add -n azure-firewall
 # Update Azure module
 Update-Module Az
+Install-Module -Name Az.ManagedServiceIdentity -AllowPrerelease
 ```
 
 # Notes
@@ -44,6 +45,11 @@ Create an ubuntu VM and place it in the aks subnet
 ```
 ssh adminuser@publicip -p P@ssword123123
 sudo apt install openvpn
+
+https://www.ovpn.com/en/guides/ubuntu-cli
+
+echo "adminuser" >> /etc/openvpn/credentials
+echo "P@ssword123123" >> /etc/openvpn/credentials
 
 ```
 
@@ -93,3 +99,8 @@ kubectl run -i --tty busybox --image=busybox -- sh --overrides='{ "apiVersion": 
 
 #### This is how you attach to an existing container
  kubectl exec -it busybox1 /bin/sh
+
+
+ #BYO MI
+ $rg = "crgar-aks-mi"
+az identity create --name "crgar-aks-cp-identity" --resource-group  $rg 
