@@ -21,16 +21,6 @@ AKS Azure Policies
 # Create a simulated Landing Zone
 Open Debug.ps1 and run using F5
 
-# Prerequisites
-A subnet with enough IP addresses and subnets:
-
-name: aks-ms-workshop-vnet
-address range: 10.0.0.0/16
-Subnets:
-    aks-subnet: 10.1.0.0/18
-    support-subnet: 10.1.100.0/24
-Log analytics workspace
-
 ## Deploy cluster manually
 ```
 New-AzResourceGroupDeployment -ResourceGroupName $ResourceGroupName -TemplateFile ./arm/aks.json -TemplateParameterFile $TemplateParameterFilePath
@@ -40,16 +30,16 @@ New-AzResourceGroupDeployment -ResourceGroupName $ResourceGroupName -TemplateFil
 This is a private cluster, if you are not in the VNet you cannot connect.
 
 ### Creating a jumpbox
-Create an ubuntu VM and place it in the aks subnet
-
+Configure the Linux Jumpbox
 ```
-ssh adminuser@publicip -p P@ssword123123
-sudo apt install openvpn
+ssh adminuser@publicip  // password P@ssword123123
+sudo bash
+apt install openvpn
 
 https://www.ovpn.com/en/guides/ubuntu-cli
 
-echo "adminuser" >> /etc/openvpn/credentials
-echo "P@ssword123123" >> /etc/openvpn/credentials
+sudo echo "adminuser" >> /etc/openvpn/credentials
+sudo echo "P@ssword123123" >> /etc/openvpn/credentials
 
 # Install docker
 apt-get update
