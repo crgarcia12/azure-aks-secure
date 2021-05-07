@@ -1,0 +1,18 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "cluster_name": {
+        "value": "<ClusterName>"
+      },
+      "virtual_network_subnet_id": {
+        "value": "<SubnetId>"
+      },
+      "log_analytics_workspace_id": {
+        "value": "<WorkspaceId>"
+      },
+      "location": {
+        "value": "<Location>"
+      }
+    }
+  }
