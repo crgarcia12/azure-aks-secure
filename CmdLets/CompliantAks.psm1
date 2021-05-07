@@ -97,7 +97,7 @@ function Get-CompliantAksProperties
             }
         }
         TemplateParameterFilePath = "./arm/environments/aks-params-$EnvironmentName.json"
-        WindowsJumpBoxVmName = "$($EnvironmentName)win"
+        WindowsJumpBoxVmName = "$($EnvironmentName)win".Substring(0, 15)
         LinuxJumpBoxVmName = "$($EnvironmentName)lin"
         Vnet = "<PlaceHolder>"
         Firewall = "<PlaceHolder>"
@@ -121,14 +121,23 @@ function New-CompliantAksLandingZone {
     $VerbosePreference = "Continue"
 
     $Properties = Get-CompliantAksProperties -EnvironmentName $EnvironmentName -Location $Location
-    New-AzResourceGroup -Name $Properties.ResourceGroupName -Location $Properties.Location -Force
-    New-CompliantAksManagedServiceIdentity -Properties ([ref]$Properties)
-    New-CompliantAksLandingZoneVnet -Properties ([ref]$Properties)
-    New-CompliantAksLandingZoneLogAnalytics -Properties ([ref]$Properties)
-    New-CompliantAksLandingZoneFirewallDeployment -Properties ([ref]$Properties)
-    New-CompliantAksLandingZoneRouteTable -Properties ([ref]$Properties)
-    New-CompliantAksJumpBox -Properties ([ref]$Properties)
-    New-CompliantAksParametersTemplateFile -Properties $Properties
+
+    try {            
+        New-AzResourceGroup -Name $Properties.ResourceGroupName -Location $Properties.Location -Force
+        New-CompliantAksManagedServiceIdentity -Properties ([ref]$Properties)
+        New-CompliantAksLandingZoneVnet -Properties ([ref]$Properties)
+        New-CompliantAksLandingZoneLogAnalytics -Properties ([ref]$Properties)
+        New-CompliantAksLandingZoneFirewallDeployment -Properties ([ref]$Properties)
+        New-CompliantAksLandingZoneRouteTable -Properties ([ref]$Properties)
+        New-CompliantAksJumpBox -Properties ([ref]$Properties)
+        New-CompliantAksParametersTemplateFile -Properties $Properties
+    }
+    finally
+    {
+        $Properties
+    }
+
+    
 
 }
 
@@ -271,7 +280,9 @@ function New-CompliantAksParametersTemplateFile {
     $params = $params -Replace "<WorkspaceId>", $Properties.LogAnalyticsWorkspaceId
     $params = $params -Replace "<ServiceCidr>", $Properties.Subnets["Services"].AddressPrefix
     $params = $params -Replace "<ClusterRgMsiId>", $Properties.ClusterRgMsiId
-    $params > $Properties.TemplateParameterFilePath   
+    # Make sure there is a directory where to put the params
+    $Properties.TemplateParameterFilePath | Split-Path | % { New-Item -ItemType Directory -Path $_ -ErrorAction SilentlyContinue}
+    $params > $Properties.TemplateParameterFilePath 
 }
 
 function New-CompliantAksManagedServiceIdentity {
@@ -281,7 +292,23 @@ function New-CompliantAksManagedServiceIdentity {
     )
     $Properties = $PropertiesRef.Value
     $msi = New-AzUserAssignedIdentity -ResourceGroupName $Properties.ResourceGroupName -Name "$($Properties.EnvironmentName)-msi"
-    $ra = New-AzRoleAssignment -ObjectId $msi.PrincipalId -RoleDefinitionName "Contributor" -Scope "/subscriptions/$($Properties.SubscriptionId)/resourceGroups/$($Properties.ResourceGroupName)"
+    $retry = 3
+    while($retry > 0)
+    {
+        try 
+        {
+            Write-Verbose "Trying to assign MSI to RG..."
+            $ra = New-AzRoleAssignment -ObjectId $msi.PrincipalId -RoleDefinitionName "Contributor" -Scope "/subscriptions/$($Properties.SubscriptionId)/resourceGroups/$($Properties.ResourceGroupName)" -ErrorAction Continue
+            $retry = 0
+            Write-Verbose "Done trying to assign MSI to RG..."
+        }
+        catch
+        {
+            Write-Verbose "Failed to assign MSI to RG. Retries: $retry"
+            Write-Error $_ -ErrorAction Continue
+            $retry--
+        }
+    }
     $Properties.ClusterRgMsiId = $msi.Id
 }
 
@@ -361,7 +388,7 @@ function New-CompliantAksJumpBox {
         [ref]$PropertiesRef
     )
     $Properties = $PropertiesRef.Value
-    
+
     Write-Verbose "Creating Windows JumpBox VM..."
     $credentials = New-Object -TypeName PSCredential -ArgumentList "adminuser", $(ConvertTo-SecureString "P@ssword123123" -AsPlainText)
     $imageURN = "microsoftwindowsdesktop:office-365:20h2-evd-o365pp:latest"

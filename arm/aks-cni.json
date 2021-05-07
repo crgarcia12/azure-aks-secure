@@ -22,7 +22,7 @@
             "type": "String",
             "defaultValue": "1.20.5"
         },
-        "cluster_rg_msi": {
+        "cluster_rg_msi_id": {
             "type": "String",
             "defaultValue": ""
         }
@@ -37,7 +37,7 @@
             "identity": { 
                 "type": "UserAssigned",
                 "userAssignedIdentities": {
-                    "[parameters('cluster_rg_msi')]" :{}
+                    "[parameters('cluster_rg_msi_id')]" :{}
                 }
             },
             "sku": {
