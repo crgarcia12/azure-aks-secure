@@ -25,6 +25,10 @@
         "cluster_rg_msi_id": {
             "type": "String",
             "defaultValue": ""
+        },
+        "api_server_dns_resource_id": {
+            "type": "String",
+            "defaultValue": ""
         }
     },
     "variables": {},
@@ -46,18 +50,17 @@
             },
             "properties": {
                 "kubernetesVersion": "[parameters('kubernetesVersion')]",
-                "windowsProfile" : {
-                    "adminUsername": "winadmin",
-                    "adminPassword": "P@ssword123123123"
+                "dnsPrefix": "crgarcluster",
+                "fqdnSubdomain": "crgarfqdncluster",
+                "apiServerAccessProfile": {
+                    "enablePrivateCluster": true,
+                    "privateDNSZone": "[parameters('api_server_dns_resource_id')]"
                 },
-                "aadProfile" : {
+                "aadProfile": {
                     "managed": true,
-                    "adminGroupObjectIDs" : ["8dda9002-1249-48ad-8620-4ee582b98f6b"]
+                    "adminGroupObjectIDs": [ "8dda9002-1249-48ad-8620-4ee582b98f6b" ]
                 },
                 "enableRBAC": true,
-                "apiServerAccessProfile": {
-                    "enablePrivateCluster": true
-                },
                 "enablePodSecurityPolicy": false,
                 "networkProfile": {
                     "networkPlugin": "azure",
@@ -65,11 +68,12 @@
                     "loadBalancerSku": "Standard",
                     "outboundType": "userDefinedRouting"
                 },
-                "dnsPrefix": "[concat(parameters('cluster_name'),'-dns')]",
                 "agentPoolProfiles": [
                     {
                         "name": "default",
                         "count": 1,
+                        "maxCount": 3,
+                        "minCount": 1,
                         "vmSize": "Standard_DS2_v2",
                         "osDiskSizeGB": 30,
                         "vnetSubnetID": "[parameters('virtual_network_subnet_id')]",
@@ -80,8 +84,6 @@
                             "2",
                             "3"
                         ],
-                        "maxCount": 3,
-                        "minCount": 1,
                         "enableAutoScaling": true,
                         "orchestratorVersion": "[parameters('kubernetesVersion')]",
                         "enableNodePublicIP": false,
@@ -100,10 +102,11 @@
                         }
                     },
                     "azurepolicy": {
-                        "enabled": true,
                         "config": {
-                            "version": "v3"
-                        }
+                            "version": "v2"
+                        },
+                        "enabled": true,
+                        "identity": null
                     }
                 }
             }

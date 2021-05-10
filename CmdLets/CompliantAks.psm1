@@ -101,6 +101,7 @@ function Get-CompliantAksProperties
         FirewallPublicIp = "<PlaceHolder>"
         RouteTable = "<PlaceHolder>"
         ContainerRegistryId = "<PlaceHolder>"
+        ApiServerDnsResourceId = "<PlaceHolder>"
     }
 
     $Properties.Vnet = Get-AzVirtualNetwork -Name $Properties.VnetName -ResourceGroupName $Properties.ResourceGroupName 
@@ -128,6 +129,9 @@ function New-CompliantAksLandingZone {
         New-CompliantAksLandingZoneFirewallDeployment -Properties ([ref]$Properties)
         New-CompliantAksLandingZoneRouteTable -Properties ([ref]$Properties)
         New-CompliantAksJumpBox -Properties ([ref]$Properties)
+        New-ComplianceAksApiServerDns -Properties ([ref]$Properties)
+        # We try that setting permissions is as late as possible, since we need AAD to update
+        # the global cache from the changes in New-CompliantAksManagedServiceIdentity
         New-CompliantAksManagedServiceIdentityPermissions -Properties ([ref]$Properties)
 
         New-CompliantAksParametersTemplateFile -Properties $Properties
@@ -138,6 +142,21 @@ function New-CompliantAksLandingZone {
         $Properties
     }   
 
+}
+
+function New-ComplianceAksApiServerDns {
+    [CmdletBinding()]
+    Param(
+        [ref]$PropertiesRef
+    )
+
+    $Properties = $PropertiesRef.Value
+
+    $dnsZone = New-AzPrivateDnsZone `
+        -ResourceGroupName $Properties.ResourceGroupName `
+        -Name "privatelink.$($Properties.Location).azmk8s.io"
+
+    $Properties.ApiServerDnsResourceId = $dnsZone.ResourceId
 }
 
 function New-CompliantAksLandingZoneVnet {
@@ -207,6 +226,8 @@ function New-CompliantAksParametersTemplateFile {
     $params = $params -Replace "<WorkspaceId>", $Properties.LogAnalyticsWorkspaceId
     $params = $params -Replace "<ServiceCidr>", $Properties.Subnets["Services"].AddressPrefix
     $params = $params -Replace "<ClusterRgMsiId>", $Properties.ClusterRgMsiId
+    $params = $params -Replace "<ApiServerDnsResourceId>", $Properties.ApiServerDnsResourceId
+
     # Make sure there is a directory where to put the params
     $Properties.TemplateParameterFilePath | Split-Path | % { New-Item -ItemType Directory -Path $_ -ErrorAction SilentlyContinue}
     $params > $Properties.TemplateParameterFilePath 
@@ -250,76 +271,6 @@ function New-CompliantAksManagedServiceIdentity {
 
     $Properties.ClusterRgMsiId = $msi.Id
     $Properties.MsiPrincipalId = $msi.PrincipalId
-}
-
-function New-CompliantAksConnection {
-    [CmdletBinding()]
-    Param(
-        [string] $EnvironmentName,
-        [string] $Location
-    )
-    # Do this in a JumpBox VM 
-    # Install Az Cli
-
-    sudo apt-get update
-    sudo apt-get upgrade
-    curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-    sudo apt-get update
-    sudo apt-get upgrade
-    sudo az aks install-cli
-
-
-    # Log in to azure, and get the credentials jumping out AAD (--admin)
-    az login 
-    az account set --subscription 930c11b0-5e6d-458f-b9e3-f3dda0734110
-    az aks get-credentials --resource-group $Properties.ResourceGroupName --name $Properties.ClusterName
-
-    az aks get-credentials --resource-group crgar-aks-prv1-rg --name  crgar-aks-prv1-cluster
-
-    kubectl get pods
-    "az aks get-credentials --resource-group $($Properties.ResourceGroupName) --name $($Properties.ClusterName) --admin"
-    kubectl apply -f rbac_users.yml
-    "kubectl config delete-cluster $($Properties.ClusterName)"
-    az aks get-credentials --resource-group crgar-secureaks-env10-rg --name crgar-secureaks-env10-cluster    
-
-    # Validating policies
-    kubectl get pods -n gatekeeper-system
-    kubectl get psp
-
-    # SSH the node from JumpBox:
-    # CLUSTER_RESOURCE_GROUP=$(az aks show --resource-group crgar-aks-prv1-rg --name crgar-aks-prv1-cluster --query nodeResourceGroup -o tsv)
-    # SCALE_SET_NAME=$(az vmss list --resource-group $CLUSTER_RESOURCE_GROUP --query '[0].name' -o tsv)
-
-    # ssh-keygen -t rsa -b 4096 -C crgar@microsoft.com
-
-    # az vmss extension set  \
-    # --resource-group $CLUSTER_RESOURCE_GROUP \
-    # --vmss-name $SCALE_SET_NAME \
-    # --name VMAccessForLinux \
-    # --publisher Microsoft.OSTCExtensions \
-    # --version 1.4 \
-    # --protected-settings "{\"username\":\"azureuser\", \"ssh_key\":\"$(cat ~/.ssh/id_rsa.pub)\"}"
-
-    # az vmss update-instances --instance-ids '*' \
-    #     --resource-group $CLUSTER_RESOURCE_GROUP \
-    #     --name $SCALE_SET_NAME
-
-    # find the IP of the node:
-    kubectl get nodes -o wide
-
-    ssh azureuser@10.1.4.5
-}
-
-function Add-CompliantAksPermissions {
-    [CmdletBinding()]
-    Param(
-        [string] $EnvironmentName,
-        [string] $Location
-    )
-
-    $Properties = Get-CompliantAksProperties -EnvironmentName $EnvironmentName -Location $Location
-    az aks get-credentials --resource-group $props.ResourceGroupName --name $props.ClusterName
-    kubectl get pods
 }
 
 function New-CompliantAksJumpBox {

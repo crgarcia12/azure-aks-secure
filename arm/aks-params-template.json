@@ -16,6 +16,9 @@
       },
       "cluster_rg_msi_id": {
         "value": "<ClusterRgMsiId>"
+      },
+      "api_server_dns_resource_id": {
+        "value": "<ApiServerDnsResourceId>"
       }
     }
   }

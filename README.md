@@ -71,6 +71,9 @@ sudo apt remove azure-cli -y && sudo apt autoremove -y
 curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
 sudo az aks install-cli
+az login
+az account set --subscription <subscriptionid>
+az aks get-credentials 
 
 ```
 

@@ -25,6 +25,10 @@
         "cluster_rg_msi_id": {
             "type": "String",
             "defaultValue": ""
+        },
+        "api_server_dns_resource_id": {
+            "type": "String",
+            "defaultValue": ""
         }
     },
     "variables": {},
@@ -34,10 +38,10 @@
             "apiVersion": "2020-12-01",
             "name": "[parameters('cluster_name')]",
             "location": "[parameters('location')]",
-            "identity": { 
+            "identity": {
                 "type": "UserAssigned",
                 "userAssignedIdentities": {
-                    "[parameters('cluster_rg_msi_id')]" :{}
+                    "[parameters('cluster_rg_msi_id')]": {}
                 }
             },
             "sku": {
@@ -46,28 +50,29 @@
             },
             "properties": {
                 "kubernetesVersion": "[parameters('kubernetesVersion')]",
-                "aadProfile" : {
-                    "managed": true,
-                    "adminGroupObjectIDs" : ["8dda9002-1249-48ad-8620-4ee582b98f6b"]
-                },
-                "enableRBAC": true,
+                "dnsPrefix": "crgarcluster",
+                "fqdnSubdomain": "crgarfqdn",
                 "apiServerAccessProfile": {
                     "enablePrivateCluster": true,
-                    "privateDNSZone": "system"
+                    "privateDNSZone": "[parameters('api_server_dns_resource_id')]"
                 },
+                "aadProfile": {
+                    "managed": true,
+                    "adminGroupObjectIDs": [ "8dda9002-1249-48ad-8620-4ee582b98f6b" ]
+                },
+                "enableRBAC": true,
                 "enablePodSecurityPolicy": false,
                 "networkProfile": {
                     "networkPlugin": "kubenet",
-                    "networkPolicy": "calico",
                     "loadBalancerSku": "Standard",
-                    "outboundType": "userDefinedRouting"
+                    "outboundType": "userDefinedRouting",
+                    "networkPolicy": "calico"
                 },
-                "dnsPrefix": "[concat(parameters('cluster_name'),'-dns')]",
                 "agentPoolProfiles": [
                     {
                         "name": "default",
-                        "count": 1,
-                        "maxCount": 3,
+                        "count": 2,
+                        "maxCount": 4,
                         "minCount": 1,
                         "vmSize": "Standard_DS2_v2",
                         "osDiskSizeGB": 30,
@@ -97,10 +102,11 @@
                         }
                     },
                     "azurepolicy": {
-                        "enabled": true,
                         "config": {
-                            "version": "v3"
-                        }
+                            "version": "v2"
+                        },
+                        "enabled": true,
+                        "identity": null
                     }
                 }
             }
