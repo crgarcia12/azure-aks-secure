@@ -1,7 +1,7 @@
 # You can press F5 in here, and it will break on breakpoints
 Import-Module ./CmdLets/CompliantAks.psm1 -Verbose -Force
 
-$EnvironmentName = "crgar-aks-38"
+$EnvironmentName = "crgar-aks-51"
 $Location = 'westeurope'
 
 $Properties = New-CompliantAksLandingZone -EnvironmentName $EnvironmentName -Location $Location

@@ -280,22 +280,8 @@ function New-CompliantAksJumpBox {
     )
     $Properties = $PropertiesRef.Value
 
-    Write-Verbose "Creating Windows JumpBox VM..."
     $credentials = New-Object -TypeName PSCredential -ArgumentList "adminuser", $(ConvertTo-SecureString "P@ssword123123" -AsPlainText)
-    $imageURN = "microsoftwindowsdesktop:office-365:20h2-evd-o365pp:latest"
-    New-AzVm -ResourceGroupName $Properties.ResourceGroupName `
-        -Location $Properties.Location `
-        -Name $Properties.WindowsJumpBoxVmName `
-        -Credential $credentials `
-        -PublicIpAddressName "$($Properties.WindowsJumpBoxVmName)-ip" `
-        -OpenPorts "3389" `
-        -VirtualNetworkName $Properties.VnetName `
-        -SubnetName $Properties.Subnets.JumpBox.Name `
-        -Image $imageURN
-
-    Invoke-AzVMRunCommand -ResourceGroupName $Properties.ResourceGroupName -Name $Properties.WindowsJumpBoxVmName -CommandId 'RunPowerShellScript' -ScriptPath .\CmdLets\New-CompliantAksWinJumpboxConfig.ps1 #-Parameter @{"arg1" = "var1";"arg2" = "var2"}
-
-
+    
     Write-Verbose "Creating Linux JumpBox VM..."
     $imageURN = "canonical:0001-com-ubuntu-server-groovy:20_10:latest"
     $linuxJumpBoxVm = New-AzVm -ResourceGroupName $Properties.ResourceGroupName `
@@ -308,9 +294,23 @@ function New-CompliantAksJumpBox {
         -SubnetName $Properties.Subnets.JumpBox.Name `
         -Image $imageURN
 
+    # Write-Verbose "Creating Windows JumpBox VM..."
+    # $imageURN = "microsoftwindowsdesktop:office-365:20h2-evd-o365pp:latest"
+    # New-AzVm -ResourceGroupName $Properties.ResourceGroupName `
+    #     -Location $Properties.Location `
+    #     -Name $Properties.WindowsJumpBoxVmName `
+    #     -Credential $credentials `
+    #     -PublicIpAddressName "$($Properties.WindowsJumpBoxVmName)-ip" `
+    #     -OpenPorts "3389" `
+    #     -VirtualNetworkName $Properties.VnetName `
+    #     -SubnetName $Properties.Subnets.JumpBox.Name `
+    #     -Image $imageURN
+    
+    #     Invoke-AzVMRunCommand -ResourceGroupName $Properties.ResourceGroupName -Name $Properties.WindowsJumpBoxVmName -CommandId 'RunPowerShellScript' -ScriptPath .\CmdLets\New-CompliantAksWinJumpboxConfig.ps1 #-Parameter @{"arg1" = "var1";"arg2" = "var2"}
+    
     Write-Verbose "Done creating JumpBox VMs..."
 
-    $ipAddress = Get-AzPublicIpAddress -Name "$($Properties.LinuxJumpBoxVmName)-ip" | Select IpAddress
+    # $ipAddress = Get-AzPublicIpAddress -Name "$($Properties.LinuxJumpBoxVmName)-ip" | Select IpAddress
     # TODO, SSH into the VM and set up everything, including VPN or somthing
 }
 

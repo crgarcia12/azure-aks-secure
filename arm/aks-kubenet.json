@@ -99,7 +99,7 @@
                         "enabled": true,
                         "config": {
                             "logAnalyticsWorkspaceResourceID": "[parameters('log_analytics_workspace_id')]"
-                        }
+                        }                    
                     },
                     "azurepolicy": {
                         "config": {
