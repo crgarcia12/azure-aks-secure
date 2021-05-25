@@ -19,9 +19,9 @@ function New-CompliantAksLandingZoneContainerRegistry {
     az acr update --name $Properties.ContainerRegistryName  --public-network-enabled false  
 
     # Private endpoint does not support policies (ex: NSG) so we need to disable it
-    $prvEndpointSubnet = $Properties.Vnet.Subnets | ? Name -eq "aks-prvendpt-subnet"
+    $prvEndpointSubnet = $Properties.SpokeVnet.Subnets | ? Name -eq $Properties.SpokeSubnets.PrivateEndpoint.Name
     $prvEndpointSubnet.PrivateEndpointNetworkPolicies = "Disabled"
-    $Properties.Vnet = $Properties.Vnet | Set-AzVirtualNetwork 
+    $Properties.SpokeVnet = $Properties.SpokeVnet | Set-AzVirtualNetwork 
 
     # Create the endpoint and the connection to the registry
     $acrPrivateLinkConnection = New-AzPrivateLinkServiceConnection `
@@ -29,7 +29,7 @@ function New-CompliantAksLandingZoneContainerRegistry {
         -PrivateLinkServiceId $Properties.ContainerRegistryId `
         -GroupId 'registry'
 
-    $prvEndpointSubnet = $Properties.Vnet.Subnets | ? Name -eq "aks-prvendpt-subnet"
+    $prvEndpointSubnet = $Properties.SpokeVnet.Subnets | ? Name -eq $Properties.SpokeSubnets.PrivateEndpoint.Name
     $arcPrivateEndpoint = New-AzPrivateEndpoint `
         -Name "AcrPrivateEndpoint" `
         -ResourceGroupName $Properties.ResourceGroupName `
@@ -41,14 +41,14 @@ function New-CompliantAksLandingZoneContainerRegistry {
 
     New-AzPrivateDnsZone `
         -ResourceGroupName $Properties.ResourceGroupName `
-        -Name "privatelink.azurecr.io" `
+        -Name "privatelink.azurecr.io" | Out-Null
 
     New-AzPrivateDnsVirtualNetworkLink `
         -ResourceGroupName $Properties.ResourceGroupName `
         -ZoneName "privatelink.azurecr.io" `
         -Name 'AcrDnsLink' `
-        -VirtualNetwork $Properties.Vnet `
-        -EnableRegistration:$false
+        -VirtualNetwork $Properties.HubVnet `
+        -EnableRegistration:$false | Out-Null
 
     $endpointPrivateIpAddress = $arcPrivateEndpoint.CustomDnsConfigs[1].IpAddresses[0]
     $Records = New-AzPrivateDnsRecordConfig -IPv4Address $endpointPrivateIpAddress
@@ -58,7 +58,7 @@ function New-CompliantAksLandingZoneContainerRegistry {
         -ResourceGroupName $Properties.ResourceGroupName `
         -Ttl 1 `
         -RecordType A `
-        -PrivateDnsRecord $Records
+        -PrivateDnsRecord $Records | Out-Null
     
     $dataEndpointPrivateIpAddress = $arcPrivateEndpoint.CustomDnsConfigs[0].IpAddresses[0]
     $Records = New-AzPrivateDnsRecordConfig -IPv4Address $dataEndpointPrivateIpAddress
@@ -68,5 +68,5 @@ function New-CompliantAksLandingZoneContainerRegistry {
         -ResourceGroupName $Properties.ResourceGroupName `
         -Ttl 1 `
         -RecordType A `
-        -PrivateDnsRecord $Records
+        -PrivateDnsRecord $Records | Out-Null
 }

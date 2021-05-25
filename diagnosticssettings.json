@@ -1,0 +1,48 @@
+,
+        {
+            "type": "ContainerService/managedClusters/providers/diagnosticSettings",
+            "name": "[concat(parameters('cluster_name'), '/Microsoft.Insights/diagnostics')]",
+            "apiVersion": "2017-05-01-preview",
+            "dependsOn": [
+                "[concat('Microsoft.ContainerService/managedClusters/', parameters('cluster_name'))]"
+            ],
+            "properties": {
+                "workspaceId": "[parameters('log_analytics_workspace_id')]",
+                "metrics": [
+                    {
+                        "category": "AllMetrics",
+                        "enabled": true
+                    }
+                ],
+                "logs": [
+                    {
+                        "category": "kube-apiserver",
+                        "enabled": true
+                    },
+                    {
+                        "category": "kube-audit",
+                        "enabled": true
+                    },
+                    {
+                        "category": "kube-audit-admin",
+                        "enabled": true
+                    },
+                    {
+                        "category": "kube-controller-manager",
+                        "enabled": true
+                    },
+                    {
+                        "category": "kube-scheduler",
+                        "enabled": true
+                    },
+                    {
+                        "category": "cluster-autoscaler",
+                        "enabled": true
+                    },
+                    {
+                        "category": "guard",
+                        "enabled": true
+                    }
+                ]
+            }
+        }

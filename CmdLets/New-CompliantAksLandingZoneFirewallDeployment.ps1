@@ -13,7 +13,7 @@ function New-CompliantAksLandingZoneFirewallDeployment {
         -Name $Properties.FirewallName `
         -ResourceGroupName $Properties.ResourceGroupName `
         -Location $Properties.Location `
-        -VirtualNetwork  $Properties.Vnet `
+        -VirtualNetwork  $Properties.HubVnet `
         -PublicIpAddress $Properties.FirewallPublicIp
     
     # This will enable the firewall to have FQDN rules
@@ -93,9 +93,11 @@ function New-CompliantAksLandingZoneFirewallDeployment {
     Write-Verbose "Done creating and configuring Firewall"
     
     Write-Verbose "Setting Firewall as DNS in the VNet"
-    $Properties.Vnet.DhcpOptions.DnsServers += $Properties.Firewall.IpConfigurations.PrivateIpAddress
-    $Properties.Vnet = Set-AzVirtualNetwork -VirtualNetwork $Properties.Vnet
+    $Properties.SpokeVnet.DhcpOptions.DnsServers += $Properties.Firewall.IpConfigurations.PrivateIpAddress
+    $Properties.SpokeVnet = Set-AzVirtualNetwork -VirtualNetwork $Properties.SpokeVnet
 
+    $Properties.HubVnet.DhcpOptions.DnsServers += $Properties.Firewall.IpConfigurations.PrivateIpAddress
+    $Properties.HubVnet = Set-AzVirtualNetwork -VirtualNetwork $Properties.HubVnet
     Write-Verbose "Done setting Firewall as DNS in the VNet"
 
 

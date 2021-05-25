@@ -13,9 +13,20 @@ function New-CompliantAksLandingZoneRouteTable {
         -Name $Properties.RouteTableName `
         -Location $Properties.Location
 
-    az network route-table route create -g $Properties.ResourceGroupName --name "firewallroute" --route-table-name $Properties.RouteTableName --address-prefix 0.0.0.0/0 --next-hop-type VirtualAppliance --next-hop-ip-address $Properties.Firewall.IpConfigurations.PrivateIpAddress --subscription $Properties.SubscriptionId
+    $outnull = az network route-table route create `
+        -g $Properties.ResourceGroupName `
+        --name "firewallroute" `
+        --route-table-name $Properties.RouteTableName `
+        --address-prefix 0.0.0.0/0 `
+        --next-hop-type VirtualAppliance `
+        --next-hop-ip-address $Properties.Firewall.IpConfigurations.PrivateIpAddress `
+        --subscription $Properties.SubscriptionId
 
     Write-Verbose "Associating AKS Subnet to Azure Firewall"
-    az network vnet subnet update -g $Properties.ResourceGroupName --vnet-name $Properties.VnetName --name $Properties.Subnets["Nodes"].Name --route-table $properties.RouteTableName
+    $outnull = az network vnet subnet update `
+        -g $Properties.ResourceGroupName `
+        --vnet-name $Properties.SpokeVNetName `
+        --name $Properties.SpokeSubnets.Nodes.Name `
+        --route-table $properties.RouteTableName
     
 }

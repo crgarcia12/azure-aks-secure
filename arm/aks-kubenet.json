@@ -6,7 +6,7 @@
             "type": "String",
             "defaultValue": ""
         },
-        "virtual_network_subnet_id": {
+        "spoke_virtual_network_subnet_id": {
             "type": "String",
             "defaultValue": ""
         },
@@ -20,7 +20,7 @@
         },
         "kubernetesVersion": {
             "type": "String",
-            "defaultValue": "1.20.5"
+            "defaultValue": "1.19.9"
         },
         "cluster_rg_msi_id": {
             "type": "String",
@@ -29,6 +29,13 @@
         "api_server_dns_resource_id": {
             "type": "String",
             "defaultValue": ""
+        },
+        "resource_tags": {
+            "type": "object",
+            "defaultValue": {
+                "kubernetesVersion": "1.19.9",
+                "dns": "byodns"
+            }
         }
     },
     "variables": {},
@@ -38,6 +45,7 @@
             "apiVersion": "2020-12-01",
             "name": "[parameters('cluster_name')]",
             "location": "[parameters('location')]",
+            "tags": "[parameters('resource_tags')]",
             "identity": {
                 "type": "UserAssigned",
                 "userAssignedIdentities": {
@@ -76,7 +84,7 @@
                         "minCount": 1,
                         "vmSize": "Standard_DS2_v2",
                         "osDiskSizeGB": 30,
-                        "vnetSubnetID": "[parameters('virtual_network_subnet_id')]",
+                        "vnetSubnetID": "[parameters('spoke_virtual_network_subnet_id')]",
                         "maxPods": 30,
                         "type": "VirtualMachineScaleSets",
                         "availabilityZones": [

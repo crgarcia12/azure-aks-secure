@@ -5,8 +5,8 @@
       "cluster_name": {
         "value": "<ClusterName>"
       },
-      "virtual_network_subnet_id": {
-        "value": "<SubnetId>"
+      "spoke_virtual_network_subnet_id": {
+        "value": "<SpokeSubnetId>"
       },
       "log_analytics_workspace_id": {
         "value": "<WorkspaceId>"

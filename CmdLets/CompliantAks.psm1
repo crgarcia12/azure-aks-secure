@@ -59,43 +59,47 @@ function Get-CompliantAksProperties
         FirewallName = "$EnvironmentName-fw"
         FirewallPublicIpName = "$EnvironmentName-fw-publicip"
         RouteTableName = "$EnvironmentName-routetable"
-        VnetName = "$EnvironmentName-vnet"
-        Subnets = @{
-            Firewall = @{
-                Name = "AzureFirewallSubnet"
-                AddressPrefix = "10.1.1.0/24"
-                Subnet = "<PlaceHolder>"
-            } 
+        SpokeVNetName = "$EnvironmentName-spoke-vnet"
+        SpokeSubnets = @{
             AppGateway= @{
                 Name = "aks-gw-subnet"
-                AddressPrefix = "10.1.2.0/24"
+                AddressPrefix = "10.2.2.0/24"
                 Subnet = "<PlaceHolder>"
             }  
             Services = @{
                 Name = "aks-svc-subnet"
-                AddressPrefix = "10.1.3.0/24"
+                AddressPrefix = "10.2.3.0/24"
                 Subnet = "<PlaceHolder>"
             }
             Nodes = @{
                 Name = "aks-nodes-subnet"
-                AddressPrefix = "10.1.4.0/24"
+                AddressPrefix = "10.2.4.0/24"
                 SubnetId = "<PlaceHolder>"
             }
             PrivateEndpoint = @{
                 Name = "aks-prvendpt-subnet"
-                AddressPrefix = "10.1.5.0/24"
+                AddressPrefix = "10.2.5.0/24"
                 Subnet = "<PlaceHolder>"
             }
             JumpBox = @{
                 Name = "aks-jumpbox-subnet"
-                AddressPrefix = "10.1.6.0/24"
+                AddressPrefix = "10.2.6.0/24"
                 Subnet = "<PlaceHolder>"
             }
         }
+        HubVNetName = "$EnvironmentName-hub-vnet"
+        HubSubnets = @{
+            Firewall = @{
+                Name = "AzureFirewallSubnet"
+                AddressPrefix = "10.1.1.0/24"
+                Subnet = "<PlaceHolder>"
+            }   
+        }      
         TemplateParameterFilePath = "./arm/environments/aks-params-$EnvironmentName.json"
         WindowsJumpBoxVmName = "$($EnvironmentName)win".Substring(0, 14)
         LinuxJumpBoxVmName = "$($EnvironmentName)lin"
-        Vnet = "<PlaceHolder>"
+        HubVnet = "<PlaceHolder>"
+        SpokeVnet = "<PlaceHolder>"
         Firewall = "<PlaceHolder>"
         FirewallIp = "<PlaceHolder>"
         FirewallPublicIp = "<PlaceHolder>"
@@ -104,7 +108,8 @@ function Get-CompliantAksProperties
         ApiServerDnsResourceId = "<PlaceHolder>"
     }
 
-    $Properties.Vnet = Get-AzVirtualNetwork -Name $Properties.VnetName -ResourceGroupName $Properties.ResourceGroupName 
+    $Properties.SpokeVnet = Get-AzVirtualNetwork -Name $Properties.SpokeVNetName -ResourceGroupName $Properties.ResourceGroupName 
+    $Properties.HubVnet = Get-AzVirtualNetwork -Name $Properties.HubVNetName -ResourceGroupName $Properties.ResourceGroupName 
 
     $Properties
 }
@@ -121,6 +126,8 @@ function New-CompliantAksLandingZone {
 
     try 
     {            
+        Select-CompliantAksAccount -SubscriptionId $Properties.SubscriptionId
+
         New-AzResourceGroup -Name $Properties.ResourceGroupName -Location $Properties.Location -Force
         New-CompliantAksManagedServiceIdentity -Properties ([ref]$Properties)
         New-CompliantAksLandingZoneVnet -Properties ([ref]$Properties)
@@ -152,11 +159,19 @@ function New-ComplianceAksApiServerDns {
 
     $Properties = $PropertiesRef.Value
 
+    $dnsName = "privatelink.$($Properties.Location).azmk8s.io"
+
     $dnsZone = New-AzPrivateDnsZone `
         -ResourceGroupName $Properties.ResourceGroupName `
-        -Name "privatelink.$($Properties.Location).azmk8s.io"
+        -Name $dnsName
 
     $Properties.ApiServerDnsResourceId = $dnsZone.ResourceId
+
+    $link = New-AzPrivateDnsVirtualNetworkLink `
+        -Name "aks-api-link" `
+        -ResourceGroupName $Properties.ResourceGroupName `
+        -ZoneName $dnsName  `
+        -VirtualNetwork $Properties.HubVnet
 }
 
 function New-CompliantAksLandingZoneVnet {
@@ -167,37 +182,71 @@ function New-CompliantAksLandingZoneVnet {
 
     $Properties = $PropertiesRef.Value
     
-    Write-Verbose "Creating VNet and subnet: ' $($Properties.VnetName)'"
+    Write-Verbose "Creating Hub VNet and subnet: ' $($Properties.HubVNetName)'"
 
-    $subnets = @()
-    foreach($subnet in $Properties.Subnets.Values) {
-        Write-Verbose "Creating Subnet $($subnet.Id)"
-        $subnets += New-AzVirtualNetworkSubnetConfig `
-            -Name $subnet.Name `
-            -AddressPrefix $subnet.AddressPrefix
-    }
+        $subnets = @()
+        foreach($subnet in $Properties.HubSubnets.Values) {
+            Write-Verbose "Creating Subnet $($subnet.Id)"
+            $subnets += New-AzVirtualNetworkSubnetConfig `
+                -Name $subnet.Name `
+                -AddressPrefix $subnet.AddressPrefix
+        }
 
-    $Properties.Vnet = New-AzVirtualNetwork `
-        -Name $Properties.VnetName `
-        -ResourceGroupName $Properties.ResourceGroupName `
-        -Location $Location `
-        -AddressPrefix 10.1.0.0/16 `
-        -Subnet $subnets `
-        -Force
+        $Properties.HubVnet = New-AzVirtualNetwork `
+            -Name $Properties.HubVNetName `
+            -ResourceGroupName $Properties.ResourceGroupName `
+            -Location $Location `
+            -AddressPrefix 10.1.0.0/16 `
+            -Subnet $subnets `
+            -Force
 
     Write-Verbose "Done creating VNet and subnet."
 
+    Write-Verbose "Creating Spoke VNet and subnet: ' $($Properties.SpokeVNetName)'"
+
+        $subnets = @()
+        foreach($subnet in $Properties.SpokeSubnets.Values) {
+            Write-Verbose "Creating Subnet $($subnet.Id)"
+            $subnets += New-AzVirtualNetworkSubnetConfig `
+                -Name $subnet.Name `
+                -AddressPrefix $subnet.AddressPrefix
+        }
+
+        $Properties.SpokeVnet = New-AzVirtualNetwork `
+            -Name $Properties.SpokeVNetName `
+            -ResourceGroupName $Properties.ResourceGroupName `
+            -Location $Location `
+            -AddressPrefix 10.2.0.0/16 `
+            -Subnet $subnets `
+            -Force
+
+    Write-Verbose "Done creating VNet and subnet."
+
+    Write-Verbose "Peering VNets"
+
+        Add-AzVirtualNetworkPeering `
+            -Name "hub-spoke" `
+            -VirtualNetwork $Properties.HubVnet `
+            -RemoteVirtualNetworkId $Properties.SpokeVnet.Id
+
+        Add-AzVirtualNetworkPeering `
+            -Name "spoke-hub" `
+            -VirtualNetwork $Properties.SpokeVnet `
+            -RemoteVirtualNetworkId $Properties.HubVnet.Id
+
+    Write-Verbose "Done peering VNets"
+
     Write-Verbose "Getting Node Pool Subnet Id"
-    $Properties.Subnets["Nodes"].SubnetId = ""
-    while($Properties.Subnets["Nodes"].SubnetId -eq "")
-    {
-        $attempt++
-        Start-Sleep -s 1
-        $Properties.Vnet = Get-AzVirtualNetwork -Name $Properties.VnetName -ResourceGroupName $Properties.ResourceGroupName
-        $Properties.Subnets["Nodes"].SubnetId = ($Properties.Vnet.Subnets | ? Name -eq $Properties.Subnets["Nodes"].Name).Id 
-        Write-Verbose "Subnet Id: '$($Properties.Subnets[`"Nodes`"].SubnetId)'"
-    }
-    Write-Verbose "Done getting Subnet Id '$($Properties.Subnets[`"Nodes`"].SubnetId)'"
+        $Properties.SpokeSubnets.Nodes.SubnetId = ""
+        while($Properties.SpokeSubnets.Nodes.SubnetId -eq "")
+        {
+            $attempt++
+            Start-Sleep -s 1
+            $Properties.SpokeVnet = Get-AzVirtualNetwork -Name $Properties.SpokeVNetName -ResourceGroupName $Properties.ResourceGroupName
+            $Properties.SpokeSubnets.Nodes.SubnetId = ($Properties.SpokeVnet.Subnets | ? Name -eq $Properties.SpokeSubnets.Nodes.Name).Id 
+            Write-Verbose "Subnet Id: '$($Properties.SpokeSubnets.Nodes.SubnetId)'"
+        }
+    Write-Verbose "Done getting Subnet Id '$($Properties.SpokeSubnets.Nodes.SubnetId)'"
 }
 
 function New-CompliantAksLandingZoneLogAnalytics {
@@ -222,9 +271,9 @@ function New-CompliantAksParametersTemplateFile {
     $params = Get-Content "./arm/aks-params-template.json"
     $params = $params -Replace "<Location>", $Properties.Location
     $params = $params -Replace "<ClusterName>", $Properties.ClusterName
-    $params = $params -Replace "<SubnetId>", $Properties.Subnets["Nodes"].SubnetId
+    $params = $params -Replace "<SpokeSubnetId>", $Properties.SpokeSubnets.Nodes.SubnetId
     $params = $params -Replace "<WorkspaceId>", $Properties.LogAnalyticsWorkspaceId
-    $params = $params -Replace "<ServiceCidr>", $Properties.Subnets["Services"].AddressPrefix
+    $params = $params -Replace "<ServiceCidr>", $Properties.SpokeSubnets.Services.AddressPrefix
     $params = $params -Replace "<ClusterRgMsiId>", $Properties.ClusterRgMsiId
     $params = $params -Replace "<ApiServerDnsResourceId>", $Properties.ApiServerDnsResourceId
 
@@ -290,8 +339,8 @@ function New-CompliantAksJumpBox {
         -Credential $credentials `
         -PublicIpAddressName "$($Properties.LinuxJumpBoxVmName)-ip" `
         -OpenPorts "22" `
-        -VirtualNetworkName $Properties.VnetName `
-        -SubnetName $Properties.Subnets.JumpBox.Name `
+        -VirtualNetworkName $Properties.SpokeVNetName `
+        -SubnetName $Properties.SpokeSubnets.JumpBox.Name `
         -Image $imageURN
 
     # Write-Verbose "Creating Windows JumpBox VM..."
@@ -302,8 +351,8 @@ function New-CompliantAksJumpBox {
     #     -Credential $credentials `
     #     -PublicIpAddressName "$($Properties.WindowsJumpBoxVmName)-ip" `
     #     -OpenPorts "3389" `
-    #     -VirtualNetworkName $Properties.VnetName `
-    #     -SubnetName $Properties.Subnets.JumpBox.Name `
+    #     -VirtualNetworkName $Properties.SpokeVNetName `
+    #     -SubnetName $Properties.SpokeSubnets.JumpBox.Name `
     #     -Image $imageURN
     
     #     Invoke-AzVMRunCommand -ResourceGroupName $Properties.ResourceGroupName -Name $Properties.WindowsJumpBoxVmName -CommandId 'RunPowerShellScript' -ScriptPath .\CmdLets\New-CompliantAksWinJumpboxConfig.ps1 #-Parameter @{"arg1" = "var1";"arg2" = "var2"}
