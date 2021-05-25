@@ -21,11 +21,6 @@ AKS Azure Policies
 # Create a simulated Landing Zone
 Open Debug.ps1 and run using F5
 
-## Deploy cluster manually
-```
-New-AzResourceGroupDeployment -ResourceGroupName $ResourceGroupName -TemplateFile ./arm/aks.json -TemplateParameterFile $TemplateParameterFilePath
-```
-
 ## Connect to the cluster
 This is a private cluster, if you are not in the VNet you cannot connect.
 
@@ -42,10 +37,10 @@ sudo echo "adminuser" >> /etc/openvpn/credentials
 sudo echo "P@ssword123123" >> /etc/openvpn/credentials
 
 # Install docker
+# requirements
 apt-get update
 apt-get upgrade
 
-# requirements
 sudo apt-get install \
     apt-transport-https \
     ca-certificates \
@@ -125,6 +120,13 @@ kubectl run -i --tty busybox --image=busybox -- sh --overrides='{ "apiVersion": 
  kubectl exec -it busybox1 /bin/sh
 
 
- #BYO MI
- $rg = "crgar-aks-mi"
-az identity create --name "crgar-aks-cp-identity" --resource-group  $rg 
+### Deploy demo app
+
+https://github.com/scubakiz/clusterinfo
+
+#### Install Helm
+```
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+chmod 700 get_helm.sh
+./get_helm.sh
+```

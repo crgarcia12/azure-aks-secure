@@ -19,11 +19,18 @@ function New-CompliantAksFullDeployment {
     Write-Verbose "Starting full deployment $EnvironmentName in $Location" -Verbose
 
     $properties = Get-CompliantAksProperties -EnvironmentName $EnvironmentName -Location $Location
-    $group = Get-AzResourceGroup -Name $properties.ResourceGroupName -ErrorAction SilentlyContinue
+    $group = Get-AzResourceGroup -Name $properties.HubResourceGroupName -ErrorAction SilentlyContinue
     if($group)
     {
-        Write-Verbose "Group $($properties.ResourceGroupName) exist. killing it!"
-        Remove-AzResourceGroup -Name $properties.ResourceGroupName -Force
+        Write-Verbose "Group $($properties.HubResourceGroupName) exist. killing it!"
+        Remove-AzResourceGroup -Name $properties.HubResourceGroupName -Force
+    }
+
+    $group = Get-AzResourceGroup -Name $properties.SpokeResourceGroupName -ErrorAction SilentlyContinue
+    if($group)
+    {
+        Write-Verbose "Group $($properties.SpokeResourceGroupName) exist. killing it!"
+        Remove-AzResourceGroup -Name $properties.SpokeResourceGroupName -Force
     }
 
     if($RemoveOnly)
@@ -52,7 +59,8 @@ function Get-CompliantAksProperties
         EnvironmentName = $EnvironmentName
         SubscriptionId = "930c11b0-5e6d-458f-b9e3-f3dda0734110"
         Location = $Location
-        ResourceGroupName = "$EnvironmentName-rg"
+        HubResourceGroupName = "$EnvironmentName-hub-rg"
+        SpokeResourceGroupName = "$EnvironmentName-spoke-rg"
         ClusterName = "$EnvironmentName-cluster"
         ContainerRegistryName = "$($EnvironmentName)acr" -replace "-", ""
         LogAnalyticsWorkspaceName = "$EnvironmentName-loganalytics"
@@ -108,8 +116,8 @@ function Get-CompliantAksProperties
         ApiServerDnsResourceId = "<PlaceHolder>"
     }
 
-    $Properties.SpokeVnet = Get-AzVirtualNetwork -Name $Properties.SpokeVNetName -ResourceGroupName $Properties.ResourceGroupName 
-    $Properties.HubVnet = Get-AzVirtualNetwork -Name $Properties.HubVNetName -ResourceGroupName $Properties.ResourceGroupName 
+    $Properties.SpokeVnet = Get-AzVirtualNetwork -Name $Properties.SpokeVNetName -ResourceGroupName $Properties.SpokeResourceGroupName 
+    $Properties.HubVnet = Get-AzVirtualNetwork -Name $Properties.HubVNetName -ResourceGroupName $Properties.HubResourceGroupName 
 
     $Properties
 }
@@ -128,7 +136,8 @@ function New-CompliantAksLandingZone {
     {            
         Select-CompliantAksAccount -SubscriptionId $Properties.SubscriptionId
 
-        New-AzResourceGroup -Name $Properties.ResourceGroupName -Location $Properties.Location -Force
+        New-AzResourceGroup -Name $Properties.HubResourceGroupName -Location $Properties.Location -Force
+        New-AzResourceGroup -Name $Properties.SpokeResourceGroupName -Location $Properties.Location -Force
         New-CompliantAksManagedServiceIdentity -Properties ([ref]$Properties)
         New-CompliantAksLandingZoneVnet -Properties ([ref]$Properties)
         New-CompliantAksLandingZoneContainerRegistry -Properties ([ref]$Properties)
@@ -162,14 +171,14 @@ function New-ComplianceAksApiServerDns {
     $dnsName = "privatelink.$($Properties.Location).azmk8s.io"
 
     $dnsZone = New-AzPrivateDnsZone `
-        -ResourceGroupName $Properties.ResourceGroupName `
+        -ResourceGroupName $Properties.HubResourceGroupName `
         -Name $dnsName
 
     $Properties.ApiServerDnsResourceId = $dnsZone.ResourceId
 
     $link = New-AzPrivateDnsVirtualNetworkLink `
         -Name "aks-api-link" `
-        -ResourceGroupName $Properties.ResourceGroupName `
+        -ResourceGroupName $Properties.HubResourceGroupName `
         -ZoneName $dnsName  `
         -VirtualNetwork $Properties.HubVnet
 }
@@ -194,7 +203,7 @@ function New-CompliantAksLandingZoneVnet {
 
         $Properties.HubVnet = New-AzVirtualNetwork `
             -Name $Properties.HubVNetName `
-            -ResourceGroupName $Properties.ResourceGroupName `
+            -ResourceGroupName $Properties.HubResourceGroupName `
             -Location $Location `
             -AddressPrefix 10.1.0.0/16 `
             -Subnet $subnets `
@@ -214,7 +223,7 @@ function New-CompliantAksLandingZoneVnet {
 
         $Properties.SpokeVnet = New-AzVirtualNetwork `
             -Name $Properties.SpokeVNetName `
-            -ResourceGroupName $Properties.ResourceGroupName `
+            -ResourceGroupName $Properties.SpokeResourceGroupName `
             -Location $Location `
             -AddressPrefix 10.2.0.0/16 `
             -Subnet $subnets `
@@ -242,7 +251,7 @@ function New-CompliantAksLandingZoneVnet {
         {
             $attempt++
             Start-Sleep -s 1
-            $Properties.SpokeVnet = Get-AzVirtualNetwork -Name $Properties.SpokeVNetName -ResourceGroupName $Properties.ResourceGroupName
+            $Properties.SpokeVnet = Get-AzVirtualNetwork -Name $Properties.SpokeVNetName -ResourceGroupName $Properties.SpokeResourceGroupName
             $Properties.SpokeSubnets.Nodes.SubnetId = ($Properties.SpokeVnet.Subnets | ? Name -eq $Properties.SpokeSubnets.Nodes.Name).Id 
             Write-Verbose "Subnet Id: '$($Properties.SpokeSubnets.Nodes.SubnetId)'"
         }
@@ -257,8 +266,8 @@ function New-CompliantAksLandingZoneLogAnalytics {
     $Properties = $PropertiesRef.Value
 
     Write-Verbose "Creating log analytics workspace: '$($Properties.LogAnalyticsWorkspaceName)'"
-        New-AzOperationalInsightsWorkspace -Location $Properties.Location -Name $Properties.LogAnalyticsWorkspaceName -Sku Standard -ResourceGroupName $Properties.ResourceGroupName -Force
-        $Properties.LogAnalyticsWorkspaceId = (get-AzOperationalInsightsWorkspace -Name $Properties.LogAnalyticsWorkspaceName -ResourceGroupName $Properties.ResourceGroupName).ResourceId
+        New-AzOperationalInsightsWorkspace -Location $Properties.Location -Name $Properties.LogAnalyticsWorkspaceName -Sku Standard -ResourceGroupName $Properties.SpokeResourceGroupName -Force
+        $Properties.LogAnalyticsWorkspaceId = (get-AzOperationalInsightsWorkspace -Name $Properties.LogAnalyticsWorkspaceName -ResourceGroupName $Properties.SpokeResourceGroupName).ResourceId
     Write-Verbose "Done creating log analytics workspace. Id: '$($Properties.LogAnalyticsWorkspaceId)'"
 }
 
@@ -295,7 +304,19 @@ function New-CompliantAksManagedServiceIdentityPermissions {
         try 
         {
             Write-Verbose "Trying to assign MSI to RG..."
-            $ra = New-AzRoleAssignment -ObjectId $Properties.MsiPrincipalId -RoleDefinitionName "Contributor" -Scope "/subscriptions/$($Properties.SubscriptionId)/resourceGroups/$($Properties.ResourceGroupName)" -ErrorAction Stop
+            $ra = New-AzRoleAssignment `
+                -ObjectId $Properties.MsiPrincipalId `
+                -RoleDefinitionName "Contributor" `
+                -Scope "/subscriptions/$($Properties.SubscriptionId)/resourceGroups/$($Properties.SpokeResourceGroupName)" `
+                -ErrorAction Stop
+
+            Write-Verbose "Trying to assign MSI to AKS Dns..."
+            $ra = New-AzRoleAssignment `
+                -ObjectId $Properties.MsiPrincipalId `
+                -RoleDefinitionName "Contributor" `
+                -Scope "/subscriptions/$($Properties.SubscriptionId)/resourceGroups/$($Properties.HubResourceGroupName)/providers/Microsoft.Network/privateDnsZones/privatelink.westeurope.azmk8s.io" `
+                -ErrorAction Stop
+
             $retry = 0
             Write-Verbose "Done trying to assign MSI to RG..."
         }
@@ -316,7 +337,9 @@ function New-CompliantAksManagedServiceIdentity {
         [ref]$PropertiesRef
     )
     $Properties = $PropertiesRef.Value
-    $msi = New-AzUserAssignedIdentity -ResourceGroupName $Properties.ResourceGroupName -Name "$($Properties.EnvironmentName)-msi"
+    $msi = New-AzUserAssignedIdentity `
+       -ResourceGroupName $Properties.SpokeResourceGroupName `
+       -Name "$($Properties.EnvironmentName)-msi"
 
     $Properties.ClusterRgMsiId = $msi.Id
     $Properties.MsiPrincipalId = $msi.PrincipalId
@@ -333,7 +356,7 @@ function New-CompliantAksJumpBox {
     
     Write-Verbose "Creating Linux JumpBox VM..."
     $imageURN = "canonical:0001-com-ubuntu-server-groovy:20_10:latest"
-    $linuxJumpBoxVm = New-AzVm -ResourceGroupName $Properties.ResourceGroupName `
+    $linuxJumpBoxVm = New-AzVm -ResourceGroupName $Properties.SpokeResourceGroupName `
         -Location $Properties.Location `
         -Name $Properties.LinuxJumpBoxVmName `
         -Credential $credentials `
@@ -345,7 +368,7 @@ function New-CompliantAksJumpBox {
 
     # Write-Verbose "Creating Windows JumpBox VM..."
     # $imageURN = "microsoftwindowsdesktop:office-365:20h2-evd-o365pp:latest"
-    # New-AzVm -ResourceGroupName $Properties.ResourceGroupName `
+    # New-AzVm -ResourceGroupName $Properties.SpokeResourceGroupName `
     #     -Location $Properties.Location `
     #     -Name $Properties.WindowsJumpBoxVmName `
     #     -Credential $credentials `
@@ -355,7 +378,7 @@ function New-CompliantAksJumpBox {
     #     -SubnetName $Properties.SpokeSubnets.JumpBox.Name `
     #     -Image $imageURN
     
-    #     Invoke-AzVMRunCommand -ResourceGroupName $Properties.ResourceGroupName -Name $Properties.WindowsJumpBoxVmName -CommandId 'RunPowerShellScript' -ScriptPath .\CmdLets\New-CompliantAksWinJumpboxConfig.ps1 #-Parameter @{"arg1" = "var1";"arg2" = "var2"}
+    #     Invoke-AzVMRunCommand -ResourceGroupName $Properties.SpokeResourceGroupName -Name $Properties.WindowsJumpBoxVmName -CommandId 'RunPowerShellScript' -ScriptPath .\CmdLets\New-CompliantAksWinJumpboxConfig.ps1 #-Parameter @{"arg1" = "var1";"arg2" = "var2"}
     
     Write-Verbose "Done creating JumpBox VMs..."
 

@@ -7,7 +7,7 @@ function New-CompliantAksLandingZoneContainerRegistry {
 
     Write-Verbose "Creating Container Registry '$($Properties.ContainerRegistryName)'"
     $registry = New-AzContainerRegistry `
-            -ResourceGroupName $Properties.ResourceGroupName `
+            -ResourceGroupName $Properties.SpokeResourceGroupName `
             -Name $Properties.ContainerRegistryName `
             -Sku Premium `
             -Location $Properties.Location `
@@ -32,7 +32,7 @@ function New-CompliantAksLandingZoneContainerRegistry {
     $prvEndpointSubnet = $Properties.SpokeVnet.Subnets | ? Name -eq $Properties.SpokeSubnets.PrivateEndpoint.Name
     $arcPrivateEndpoint = New-AzPrivateEndpoint `
         -Name "AcrPrivateEndpoint" `
-        -ResourceGroupName $Properties.ResourceGroupName `
+        -ResourceGroupName $Properties.SpokeResourceGroupName `
         -Location $Properties.Location `
         -Subnet $prvEndpointSubnet `
         -PrivateLinkServiceConnection $acrPrivateLinkConnection
@@ -40,11 +40,11 @@ function New-CompliantAksLandingZoneContainerRegistry {
     # Update the DNS
 
     New-AzPrivateDnsZone `
-        -ResourceGroupName $Properties.ResourceGroupName `
+        -ResourceGroupName $Properties.SpokeResourceGroupName `
         -Name "privatelink.azurecr.io" | Out-Null
 
     New-AzPrivateDnsVirtualNetworkLink `
-        -ResourceGroupName $Properties.ResourceGroupName `
+        -ResourceGroupName $Properties.SpokeResourceGroupName `
         -ZoneName "privatelink.azurecr.io" `
         -Name 'AcrDnsLink' `
         -VirtualNetwork $Properties.HubVnet `
@@ -55,7 +55,7 @@ function New-CompliantAksLandingZoneContainerRegistry {
     New-AzPrivateDnsRecordSet `
         -Name $Properties.ContainerRegistryName `
         -ZoneName "privatelink.azurecr.io" `
-        -ResourceGroupName $Properties.ResourceGroupName `
+        -ResourceGroupName $Properties.SpokeResourceGroupName `
         -Ttl 1 `
         -RecordType A `
         -PrivateDnsRecord $Records | Out-Null
@@ -65,7 +65,7 @@ function New-CompliantAksLandingZoneContainerRegistry {
     New-AzPrivateDnsRecordSet `
         -Name "$($Properties.ContainerRegistryName).$($Properties.Location).data" `
         -ZoneName "privatelink.azurecr.io" `
-        -ResourceGroupName $Properties.ResourceGroupName `
+        -ResourceGroupName $Properties.SpokeResourceGroupName `
         -Ttl 1 `
         -RecordType A `
         -PrivateDnsRecord $Records | Out-Null

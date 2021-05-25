@@ -9,12 +9,12 @@ function New-CompliantAksLandingZoneRouteTable {
     Write-Verbose "Creating UDR & Routing Table for Azure Firewall"
     #az network route-table create -g $ResourceGroup --name $FwRouteTableName
     $Properties.RouteTable = New-AzRouteTable `
-        -ResourceGroupName $Properties.ResourceGroupName `
+        -ResourceGroupName $Properties.SpokeResourceGroupName `
         -Name $Properties.RouteTableName `
         -Location $Properties.Location
 
     $outnull = az network route-table route create `
-        -g $Properties.ResourceGroupName `
+        -g $Properties.SpokeResourceGroupName `
         --name "firewallroute" `
         --route-table-name $Properties.RouteTableName `
         --address-prefix 0.0.0.0/0 `
@@ -24,7 +24,7 @@ function New-CompliantAksLandingZoneRouteTable {
 
     Write-Verbose "Associating AKS Subnet to Azure Firewall"
     $outnull = az network vnet subnet update `
-        -g $Properties.ResourceGroupName `
+        -g $Properties.SpokeResourceGroupName `
         --vnet-name $Properties.SpokeVNetName `
         --name $Properties.SpokeSubnets.Nodes.Name `
         --route-table $properties.RouteTableName

@@ -6,12 +6,17 @@ function New-CompliantAksLandingZoneFirewallDeployment {
     $Properties = $PropertiesRef.Value
 
     Write-Verbose "Creating Public IP for Azure Firewall"
-    $Properties.FirewallPublicIp = New-AzPublicIpAddress -ResourceGroupName $Properties.ResourceGroupName -Name $Properties.FirewallPublicIpName -Location $Properties.Location -Sku "Standard" -AllocationMethod Static
+    $Properties.FirewallPublicIp = New-AzPublicIpAddress `
+        -ResourceGroupName $Properties.HubResourceGroupName `
+        -Name $Properties.FirewallPublicIpName `
+        -Location $Properties.Location `
+        -Sku "Standard" `
+        -AllocationMethod Static
 
     Write-Verbose "Creating Azure Firewall"
     $Properties.Firewall = New-AzFirewall `
         -Name $Properties.FirewallName `
-        -ResourceGroupName $Properties.ResourceGroupName `
+        -ResourceGroupName $Properties.HubResourceGroupName `
         -Location $Properties.Location `
         -VirtualNetwork  $Properties.HubVnet `
         -PublicIpAddress $Properties.FirewallPublicIp
@@ -55,6 +60,17 @@ function New-CompliantAksLandingZoneFirewallDeployment {
         )
     $MandatoryMicrosoftCollection = New-AzFirewallApplicationRuleCollection -Name 'Mandatory-Microsoft' -Priority $($priority+=100;$priority) -Rule $MicrosoftFQDNRule -ActionType "Allow"
 
+    $DockerHubFQDNRule = New-AzFirewallApplicationRule -Name 'DockerHub' `
+        -SourceAddress '*' `
+        -Protocol HTTPS `
+        -TargetFqdn @(
+            'https://auth.docker.io'
+            'https://registry-1.docker.io'
+            'https://index.docker.io/'
+            'https://dseasb33srnrn.cloudfront.net/'
+            'https://production.cloudflare.docker.com/'
+        )
+
     $UbuntuUpdatesRule = New-AzFirewallApplicationRule -Name  'UbuntuUpdates' `
         -SourceAddress '*' `
         -Protocol HTTP `
@@ -63,7 +79,11 @@ function New-CompliantAksLandingZoneFirewallDeployment {
                 'azure.archive.ubuntu.com'
                 'changelogs.ubuntu.com'
         )
-    $OptionalExternalCollection = New-AzFirewallApplicationRuleCollection -Name 'Optional-External' -Priority $($priority+=100;$priority) -Rule $UbuntuUpdatesRule -ActionType "Allow"
+    $OptionalExternalCollection = New-AzFirewallApplicationRuleCollection `
+        -Name 'Optional-External' `
+        -Priority $($priority+=100;$priority) `
+        -Rule $UbuntuUpdatesRule, $DockerHubFQDNRule `
+        -ActionType "Allow"
     
 
     $MonitoringRule = New-AzFirewallApplicationRule -Name 'Monitoring' `
