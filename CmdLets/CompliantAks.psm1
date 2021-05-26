@@ -5,8 +5,30 @@ function Select-CompliantAksAccount {
     )
     Write-Verbose "Selecting subscription" -Verbose
 
-    Select-AzSubscription -SubscriptionId $SubscriptionId
-    az account set --subscription $SubscriptionId
+    $outNull = Select-AzSubscription -SubscriptionId $SubscriptionId
+    $outNull = az account set --subscription $SubscriptionId
+}
+
+function Remove-CompliantAksResourceGroupIfExist {
+    [CmdletBinding()]
+    Param(
+        [string] $ResourceGroupName
+    )
+
+    Start-Job `
+        -ArgumentList $ResourceGroupName `
+        -Name "removing$ResourceGroupName" `
+        -ScriptBlock {
+            $ResourceGroupName = $args[0]
+            Write-Verbose "[$ResourceGroupName] Trying to get resource group $ResourceGroupName..." -Verbose
+            $group = Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction SilentlyContinue
+            if($group)
+            {
+                Write-Verbose "[$ResourceGroupName] Group $ResourceGroupName exist. killing it!" -Verbose
+                $outNull = Remove-AzResourceGroup -Name $ResourceGroupName -Force
+            }
+            Write-Verbose "[$ResourceGroupName] Done trying to get resource group $ResourceGroupName." -Verbose
+    }
 }
 
 function New-CompliantAksFullDeployment {
@@ -16,22 +38,16 @@ function New-CompliantAksFullDeployment {
         [string] $Location,
         [switch] $RemoveOnly
     )
+    $VerbosePreference = "continue"
     Write-Verbose "Starting full deployment $EnvironmentName in $Location" -Verbose
 
     $properties = Get-CompliantAksProperties -EnvironmentName $EnvironmentName -Location $Location
-    $group = Get-AzResourceGroup -Name $properties.HubResourceGroupName -ErrorAction SilentlyContinue
-    if($group)
-    {
-        Write-Verbose "Group $($properties.HubResourceGroupName) exist. killing it!"
-        Remove-AzResourceGroup -Name $properties.HubResourceGroupName -Force
-    }
 
-    $group = Get-AzResourceGroup -Name $properties.SpokeResourceGroupName -ErrorAction SilentlyContinue
-    if($group)
-    {
-        Write-Verbose "Group $($properties.SpokeResourceGroupName) exist. killing it!"
-        Remove-AzResourceGroup -Name $properties.SpokeResourceGroupName -Force
-    }
+    $removeJobs = New-Object -TypeName System.Collections.ArrayList
+    $outNull = $removeJobs.Add((Remove-CompliantAksResourceGroupIfExist -ResourceGroupName $properties.HubResourceGroupName))
+    $outNull = $removeJobs.Add((Remove-CompliantAksResourceGroupIfExist -ResourceGroupName $properties.SpokeResourceGroupName))
+    
+    $removeJobs | Receive-Job -Wait
 
     if($RemoveOnly)
     {
@@ -134,23 +150,24 @@ function New-CompliantAksLandingZone {
 
     try 
     {            
-        Select-CompliantAksAccount -SubscriptionId $Properties.SubscriptionId
+        $outNull = Select-CompliantAksAccount -SubscriptionId $Properties.SubscriptionId
 
-        New-AzResourceGroup -Name $Properties.HubResourceGroupName -Location $Properties.Location -Force
-        New-AzResourceGroup -Name $Properties.SpokeResourceGroupName -Location $Properties.Location -Force
-        New-CompliantAksManagedServiceIdentity -Properties ([ref]$Properties)
-        New-CompliantAksLandingZoneVnet -Properties ([ref]$Properties)
-        New-CompliantAksLandingZoneContainerRegistry -Properties ([ref]$Properties)
-        New-CompliantAksLandingZoneLogAnalytics -Properties ([ref]$Properties)
-        New-CompliantAksLandingZoneFirewallDeployment -Properties ([ref]$Properties)
-        New-CompliantAksLandingZoneRouteTable -Properties ([ref]$Properties)
-        New-CompliantAksJumpBox -Properties ([ref]$Properties)
-        New-ComplianceAksApiServerDns -Properties ([ref]$Properties)
+        
+        $outNull = New-AzResourceGroup -Name $Properties.HubResourceGroupName -Location $Properties.Location -Force
+        $outNull = New-AzResourceGroup -Name $Properties.SpokeResourceGroupName -Location $Properties.Location -Force
+        $outNull = New-CompliantAksManagedServiceIdentity -Properties ([ref]$Properties)
+        $outNull = New-CompliantAksLandingZoneVnet -Properties ([ref]$Properties)
+        $outNull = New-CompliantAksLandingZoneContainerRegistry -Properties ([ref]$Properties)
+        $outNull = New-CompliantAksLandingZoneLogAnalytics -Properties ([ref]$Properties)
+        $outNull = New-CompliantAksLandingZoneFirewallDeployment -Properties ([ref]$Properties)
+        $outNull = New-CompliantAksLandingZoneRouteTable -Properties ([ref]$Properties)
+        $outNull = New-CompliantAksJumpBox -Properties ([ref]$Properties)
+        $outNull = New-ComplianceAksApiServerDns -Properties ([ref]$Properties)
         # We try that setting permissions is as late as possible, since we need AAD to update
         # the global cache from the changes in New-CompliantAksManagedServiceIdentity
-        New-CompliantAksManagedServiceIdentityPermissions -Properties ([ref]$Properties)
+        $outNull = New-CompliantAksManagedServiceIdentityPermissions -Properties ([ref]$Properties)
 
-        New-CompliantAksParametersTemplateFile -Properties $Properties
+        $outNull = New-CompliantAksParametersTemplateFile -Properties $Properties
 
     }
     finally
@@ -277,6 +294,7 @@ function New-CompliantAksParametersTemplateFile {
         $Properties
     )
 
+    Write-Verbose "Getting params template file..."
     $params = Get-Content "./arm/aks-params-template.json"
     $params = $params -Replace "<Location>", $Properties.Location
     $params = $params -Replace "<ClusterName>", $Properties.ClusterName
@@ -289,6 +307,7 @@ function New-CompliantAksParametersTemplateFile {
     # Make sure there is a directory where to put the params
     $Properties.TemplateParameterFilePath | Split-Path | % { New-Item -ItemType Directory -Path $_ -ErrorAction SilentlyContinue}
     $params > $Properties.TemplateParameterFilePath 
+    Write-Verbose "Done writing param template file."
 }
 
 function New-CompliantAksManagedServiceIdentityPermissions {
@@ -356,7 +375,8 @@ function New-CompliantAksJumpBox {
     
     Write-Verbose "Creating Linux JumpBox VM..."
     $imageURN = "canonical:0001-com-ubuntu-server-groovy:20_10:latest"
-    $linuxJumpBoxVm = New-AzVm -ResourceGroupName $Properties.SpokeResourceGroupName `
+    $linuxJumpBoxVm = New-AzVm `
+        -ResourceGroupName $Properties.SpokeResourceGroupName `
         -Location $Properties.Location `
         -Name $Properties.LinuxJumpBoxVmName `
         -Credential $credentials `

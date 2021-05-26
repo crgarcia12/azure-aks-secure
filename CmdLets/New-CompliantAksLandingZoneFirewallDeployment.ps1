@@ -32,9 +32,6 @@ function New-CompliantAksLandingZoneFirewallDeployment {
 
     Write-Verbose "Adding Network FW Rules for egress traffic"
 
-    # FQDN Tags for FW Application Rules:
-    # az network firewall application-rule create -g $RG -f $FWNAME --collection-name 'aksfwar' -n 'fqdn' --source-addresses '*' --protocols 'http=80' 'https=443' --fqdn-tags "AzureKubernetesService" --action allow --priority 100
-
     $priority = 1000
     $NetworkTimeProtocolRule = New-AzFirewallNetworkRule -Name 'NetworkTimeProtocol' `
         -SourceAddress '*' `
@@ -49,7 +46,6 @@ function New-CompliantAksLandingZoneFirewallDeployment {
         -SourceAddress '*' `
         -Protocol HTTPS `
         -TargetFqdn @(
-            # "*.hcp.$($Properties.Location).azmk8s.io"
             'mcr.microsoft.com'
             '*.cdn.mscr.io'
             '*.data.mcr.microsoft.com'
@@ -64,11 +60,11 @@ function New-CompliantAksLandingZoneFirewallDeployment {
         -SourceAddress '*' `
         -Protocol HTTPS `
         -TargetFqdn @(
-            'https://auth.docker.io'
-            'https://registry-1.docker.io'
-            'https://index.docker.io/'
-            'https://dseasb33srnrn.cloudfront.net/'
-            'https://production.cloudflare.docker.com/'
+            'auth.docker.io'
+            'registry-1.docker.io'
+            'index.docker.io'
+            'dseasb33srnrn.cloudfront.net'
+            'production.cloudflare.docker.com'
         )
 
     $UbuntuUpdatesRule = New-AzFirewallApplicationRule -Name  'UbuntuUpdates' `
@@ -82,7 +78,7 @@ function New-CompliantAksLandingZoneFirewallDeployment {
     $OptionalExternalCollection = New-AzFirewallApplicationRuleCollection `
         -Name 'Optional-External' `
         -Priority $($priority+=100;$priority) `
-        -Rule $UbuntuUpdatesRule, $DockerHubFQDNRule `
+        -Rule @($UbuntuUpdatesRule, $DockerHubFQDNRule) `
         -ActionType "Allow"
     
 
