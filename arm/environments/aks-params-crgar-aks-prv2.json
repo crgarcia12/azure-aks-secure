@@ -1,0 +1,24 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "cluster_name": {
+        "value": "crgar-aks-prv2-cluster"
+      },
+      "spoke_virtual_network_subnet_id": {
+        "value": "/subscriptions/930c11b0-5e6d-458f-b9e3-f3dda0734110/resourceGroups/crgar-aks-prv2-spoke-rg/providers/Microsoft.Network/virtualNetworks/crgar-aks-prv2-spoke-vnet/subnets/aks-nodes-subnet"
+      },
+      "log_analytics_workspace_id": {
+        "value": ""
+      },
+      "location": {
+        "value": "westeurope"
+      },
+      "cluster_rg_msi_id": {
+        "value": "/subscriptions/930c11b0-5e6d-458f-b9e3-f3dda0734110/resourcegroups/crgar-aks-prv2-spoke-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/crgar-aks-prv2-msi"
+      },
+      "api_server_dns_resource_id": {
+        "value": "/subscriptions/930c11b0-5e6d-458f-b9e3-f3dda0734110/resourceGroups/crgar-aks-prv2-hub-rg/providers/Microsoft.Network/privateDnsZones/privatelink.westeurope.azmk8s.io"
+      }
+    }
+  }

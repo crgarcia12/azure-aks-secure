@@ -1,0 +1,20 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+        "environmentName":{
+            "value": "crgar-aks-3"
+        },
+        "acrRole": {
+            "value": "/subscriptions/930c11b0-5e6d-458f-b9e3-f3dda0734110/providers/Microsoft.Authorization/roleDefinitions/7f951dda-4ed3-4680-a7ca-43fe172d538d"
+        },
+        "routeTableId": {
+            "value": "/subscriptions/930c11b0-5e6d-458f-b9e3-f3dda0734110/resourceGroups/crgar-aks-prv4-spoke-rg/providers/Microsoft.Network/routeTables/crgar-aks-prv4-routetable"
+        },
+        "adminGroupObjectIDs": {
+            "value": [
+                "8dda9002-1249-48ad-8620-4ee582b98f6b"
+            ]
+        }
+    }
+}

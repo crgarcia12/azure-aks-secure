@@ -1,0 +1,353 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.4.613.9944",
+      "templateHash": "3152492986914780821"
+    }
+  },
+  "parameters": {
+    "environmentName": {
+      "type": "string"
+    },
+    "k8sVersion": {
+      "type": "string",
+      "defaultValue": "1.21.1"
+    },
+    "adminGroupObjectIDs": {
+      "type": "array",
+      "defaultValue": []
+    },
+    "acrRole": {
+      "type": "string"
+    },
+    "routeTableId": {
+      "type": "string"
+    },
+    "vnetName": {
+      "type": "string",
+      "defaultValue": "crgar-aks-prv4-spoke-vnet"
+    }
+  },
+  "functions": [],
+  "variables": {
+    "aksSubnetInfo": {
+      "name": "aks-nodes-subnet",
+      "properties": {
+        "addressPrefix": "10.2.4.0/24"
+      }
+    },
+    "privateEndpointsSubnetInfo": {
+      "name": "aks-jumpbox-subnet",
+      "properties": {
+        "addressPrefix": "10.2.5.0/24",
+        "privateEndpointNetworkPolicies": "Disabled"
+      }
+    },
+    "jumpboxSubnetInfo": {
+      "name": "aks-jumpbox-subnet",
+      "properties": {
+        "addressPrefix": "10.2.6.0/24"
+      }
+    },
+    "allSubnets": [
+      "[variables('privateEndpointsSubnetInfo')]",
+      "[variables('aksSubnetInfo')]",
+      "[variables('jumpboxSubnetInfo')]"
+    ]
+  },
+  "resources": [
+    {
+      "copy": {
+        "name": "Subnets",
+        "count": "[length(variables('allSubnets'))]",
+        "mode": "serial",
+        "batchSize": 1
+      },
+      "type": "Microsoft.Network/virtualNetworks/subnets",
+      "apiVersion": "2020-11-01",
+      "name": "[format('{0}/{1}', parameters('vnetName'), variables('allSubnets')[copyIndex()].name)]",
+      "properties": "[union(variables('allSubnets')[copyIndex()].properties, createObject('routeTable', createObject('id', parameters('routeTableId'))))]"
+    },
+    {
+      "type": "Microsoft.ContainerRegistry/registries",
+      "apiVersion": "2020-11-01-preview",
+      "name": "[format('{0}-acr', parameters('environmentName'))]",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "Premium"
+      },
+      "properties": {
+        "adminUserEnabled": true
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2020-04-01-preview",
+      "scope": "[format('Microsoft.ContainerRegistry/registries/{0}', format('{0}-acr', parameters('environmentName')))]",
+      "name": "[guid(resourceGroup().id)]",
+      "properties": {
+        "principalId": "[reference(resourceId('Microsoft.Resources/deployments', 'AksCluster'), '2019-10-01').outputs.identity.value]",
+        "roleDefinitionId": "[parameters('acrRole')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ContainerRegistry/registries', format('{0}-acr', parameters('environmentName')))]",
+        "[resourceId('Microsoft.Resources/deployments', 'AksCluster')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2019-10-01",
+      "name": "AksCluster",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "environmentName": {
+            "value": "[parameters('environmentName')]"
+          },
+          "subnetId": {
+            "value": "[format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName')), variables('aksSubnetInfo').name)]"
+          },
+          "aksSettings": {
+            "value": {
+              "identity": "SystemAssigned",
+              "kubernetesVersion": "[parameters('k8sVersion')]",
+              "networkPlugin": "azure",
+              "networkPolicy": "calico",
+              "serviceCidr": "172.16.0.0/22",
+              "dnsServiceIP": "172.16.0.10",
+              "dockerBridgeCidr": "172.16.4.1/22",
+              "loadBalancerSku": "standard",
+              "sku_tier": "Paid",
+              "enableRBAC": true,
+              "aadProfileManaged": true,
+              "adminGroupObjectIDs": "[parameters('adminGroupObjectIDs')]",
+              "outboundType": "userDefinedRouting",
+              "enablePrivateCluster": true
+            }
+          },
+          "defaultNodePool": {
+            "value": {
+              "name": "systempool01",
+              "count": 1,
+              "vmSize": "Standard_D2s_v3",
+              "osDiskSizeGB": 50,
+              "osDiskType": "Ephemeral",
+              "vnetSubnetID": "[format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName')), variables('aksSubnetInfo').name)]",
+              "osType": "Linux",
+              "maxCount": 6,
+              "minCount": 2,
+              "enableAutoScaling": true,
+              "type": "VirtualMachineScaleSets",
+              "mode": "System",
+              "nodeTaints": [
+                "CriticalAddonsOnly=true:NoSchedule"
+              ]
+            }
+          },
+          "userNodePools": {
+            "value": [
+              {
+                "name": "usernp01",
+                "count": 1,
+                "vmSize": "Standard_D4s_v3",
+                "osDiskSizeGB": 100,
+                "osDiskType": "Ephemeral",
+                "vnetSubnetID": "[format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName')), variables('aksSubnetInfo').name)]",
+                "maxPods": 30,
+                "maxCount": 6,
+                "minCount": 2,
+                "enableAutoScaling": true,
+                "mode": "User",
+                "orchestratorVersion": "[parameters('k8sVersion')]",
+                "maxSurge": null,
+                "tags": {},
+                "nodeLabels": {},
+                "taints": []
+              }
+            ]
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.4.613.9944",
+              "templateHash": "3217207215891023073"
+            }
+          },
+          "parameters": {
+            "environmentName": {
+              "type": "string"
+            },
+            "subnetId": {
+              "type": "string"
+            },
+            "aksSettings": {
+              "type": "object",
+              "defaultValue": {
+                "kubernetesVersion": null,
+                "identity": "UserAssigned",
+                "networkPlugin": "azure",
+                "networkPolicy": "calico",
+                "serviceCidr": "172.16.0.0/22",
+                "dnsServiceIP": "172.16.0.10",
+                "dockerBridgeCidr": "172.16.4.1/22",
+                "loadBalancerSku": "standard",
+                "sku_tier": "Free",
+                "enableRBAC": true,
+                "aadProfileManaged": true,
+                "adminGroupObjectIDs": [],
+                "outboundType": "userDefinedRouting",
+                "enablePrivateCluster": true
+              }
+            },
+            "defaultNodePool": {
+              "type": "object",
+              "defaultValue": {
+                "name": "systempool01",
+                "count": 3,
+                "vmSize": "Standard_D2s_v3",
+                "osDiskSizeGB": 50,
+                "osDiskType": "Ephemeral",
+                "vnetSubnetID": "[parameters('subnetId')]",
+                "osType": "Linux",
+                "maxCount": 6,
+                "minCount": 2,
+                "enableAutoScaling": true,
+                "type": "VirtualMachineScaleSets",
+                "mode": "System",
+                "orchestratorVersion": null,
+                "nodeTaints": [
+                  "CriticalAddonsOnly=true:NoSchedule"
+                ]
+              }
+            },
+            "userNodePools": {
+              "type": "array",
+              "defaultValue": []
+            }
+          },
+          "functions": [],
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2020-03-01-preview",
+              "name": "[format('{0}-loganalytics', parameters('environmentName'))]",
+              "tags": {},
+              "location": "[resourceGroup().location]",
+              "properties": {
+                "sku": {
+                  "name": "PerGB2018"
+                },
+                "retentionInDays": 30,
+                "workspaceCapping": {
+                  "dailyQuotaGb": 30
+                }
+              }
+            },
+            {
+              "type": "Microsoft.ContainerService/managedClusters",
+              "apiVersion": "2021-02-01",
+              "name": "[format('{0}-aks', parameters('environmentName'))]",
+              "location": "[resourceGroup().location]",
+              "identity": {
+                "type": "[parameters('aksSettings').identity]"
+              },
+              "sku": {
+                "name": "Basic",
+                "tier": "[parameters('aksSettings').sku_tier]"
+              },
+              "properties": {
+                "kubernetesVersion": "[parameters('aksSettings').kubernetesVersion]",
+                "dnsPrefix": "[parameters('aksSettings').clusterName]",
+                "addonProfiles": {
+                  "omsagent": {
+                    "enabled": true,
+                    "config": {
+                      "logAnalyticsWorkspaceResourceID": "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-loganalytics', parameters('environmentName')))]"
+                    }
+                  }
+                },
+                "enableRBAC": "[parameters('aksSettings').enableRBAC]",
+                "enablePodSecurityPolicy": false,
+                "networkProfile": {
+                  "networkPlugin": "[parameters('aksSettings').networkPlugin]",
+                  "networkPolicy": "[parameters('aksSettings').networkPolicy]",
+                  "serviceCidr": "[parameters('aksSettings').serviceCidr]",
+                  "dnsServiceIP": "[parameters('aksSettings').dnsServiceIP]",
+                  "dockerBridgeCidr": "[parameters('aksSettings').dockerBridgeCidr]",
+                  "outboundType": "[parameters('aksSettings').outboundType]",
+                  "loadBalancerSku": "[parameters('aksSettings').loadBalancerSku]"
+                },
+                "aadProfile": {
+                  "managed": "[parameters('aksSettings').aadProfileManaged]",
+                  "adminGroupObjectIDs": "[parameters('aksSettings').adminGroupObjectIDs]"
+                },
+                "autoUpgradeProfile": {},
+                "apiServerAccessProfile": {
+                  "enablePrivateCluster": false
+                },
+                "agentPoolProfiles": [
+                  "[parameters('defaultNodePool')]"
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-loganalytics', parameters('environmentName')))]"
+              ]
+            },
+            {
+              "copy": {
+                "name": "aksNodepool",
+                "count": "[length(parameters('userNodePools'))]"
+              },
+              "type": "Microsoft.ContainerService/managedClusters/agentPools",
+              "apiVersion": "2021-02-01",
+              "name": "[format('{0}/{1}', format('{0}-aks', parameters('environmentName')), parameters('userNodePools')[copyIndex()].name)]",
+              "properties": {
+                "count": "[parameters('userNodePools')[copyIndex()].count]",
+                "vmSize": "[parameters('userNodePools')[copyIndex()].vmSize]",
+                "osDiskSizeGB": "[parameters('userNodePools')[copyIndex()].osDiskSizeGB]",
+                "osDiskType": "[parameters('userNodePools')[copyIndex()].osDiskType]",
+                "vnetSubnetID": "[parameters('subnetId')]",
+                "maxPods": "[parameters('userNodePools')[copyIndex()].maxPods]",
+                "osType": "Linux",
+                "maxCount": "[parameters('userNodePools')[copyIndex()].maxCount]",
+                "minCount": "[parameters('userNodePools')[copyIndex()].minCount]",
+                "enableAutoScaling": "[parameters('userNodePools')[copyIndex()].enableAutoScaling]",
+                "type": "VirtualMachineScaleSets",
+                "mode": "[parameters('userNodePools')[copyIndex()].mode]",
+                "orchestratorVersion": "[parameters('userNodePools')[copyIndex()].orchestratorVersion]",
+                "upgradeSettings": {
+                  "maxSurge": "[parameters('userNodePools')[copyIndex()].maxSurge]"
+                },
+                "tags": "[parameters('userNodePools')[copyIndex()].tags]",
+                "nodeLabels": "[parameters('userNodePools')[copyIndex()].nodeLabels]",
+                "nodeTaints": "[parameters('userNodePools')[copyIndex()].taints]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ContainerService/managedClusters', format('{0}-aks', parameters('environmentName')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "identity": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', format('{0}-aks', parameters('environmentName'))), '2021-02-01', 'full').identity.principalId]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "Subnets"
+      ]
+    }
+  ]
+}

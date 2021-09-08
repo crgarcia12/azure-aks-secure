@@ -1,0 +1,24 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "azureFirewalls_crgar_aks_81_fw_name": {
+            "value": null
+        },
+        "virtualNetworks_crgar_aks_81_hub_vnet_name": {
+            "value": null
+        },
+        "publicIPAddresses_crgar_aks_81_fw_publicip_name": {
+            "value": null
+        },
+        "privateDnsZones_privatelink_westeurope_azmk8s_io_name": {
+            "value": null
+        },
+        "managedClusters_crgar_aks_81_cluster_externalid": {
+            "value": null
+        },
+        "virtualNetworks_crgar_aks_81_spoke_vnet_externalid": {
+            "value": null
+        }
+    }
+}

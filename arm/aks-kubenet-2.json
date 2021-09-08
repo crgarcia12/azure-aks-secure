@@ -4,38 +4,19 @@
     "parameters": {
         "cluster_name": {
             "type": "String",
-            "defaultValue": ""
-        },
-        "spoke_virtual_network_subnet_id": {
-            "type": "String",
-            "defaultValue": ""
-        },
-        "log_analytics_workspace_id": {
-            "type": "String",
-            "defaultValue": ""
+            "defaultValue": "crgar-public-aks-cluster-3"
         },
         "location": {
             "type": "String",
-            "defaultValue": ""
+            "defaultValue": "westeurope"
         },
         "kubernetesVersion": {
             "type": "String",
-            "defaultValue": "1.21.1"
+            "defaultValue": "1.19.9"
         },
-        "cluster_rg_msi_id": {
+        "log_analytics_workspace_id": {
             "type": "String",
-            "defaultValue": ""
-        },
-        "api_server_dns_resource_id": {
-            "type": "String",
-            "defaultValue": ""
-        },
-        "resource_tags": {
-            "type": "object",
-            "defaultValue": {
-                "kubernetesVersion": "1.21.1",
-                "dns": "byodns"
-            }
+            "defaultValue": "/subscriptions/930c11b0-5e6d-458f-b9e3-f3dda0734110/resourcegroups/crgar-aks-public-rg/providers/microsoft.operationalinsights/workspaces/crgar-aks-public-la"
         }
     },
     "variables": {},
@@ -45,12 +26,8 @@
             "apiVersion": "2020-12-01",
             "name": "[parameters('cluster_name')]",
             "location": "[parameters('location')]",
-            "tags": "[parameters('resource_tags')]",
             "identity": {
-                "type": "UserAssigned",
-                "userAssignedIdentities": {
-                    "[parameters('cluster_rg_msi_id')]": {}
-                }
+                "type": "SystemAssigned"
             },
             "sku": {
                 "name": "Basic",
@@ -58,33 +35,25 @@
             },
             "properties": {
                 "kubernetesVersion": "[parameters('kubernetesVersion')]",
-                "dnsPrefix": "crgarclusterdnsprefix",
+                "dnsPrefix": "crgarcluster",
                 "fqdnSubdomain": "crgarfqdn",
                 "apiServerAccessProfile": {
-                    "enablePrivateCluster": true,
-                    "privateDNSZone": "[parameters('api_server_dns_resource_id')]"
-                },
-                "aadProfile": {
-                    "managed": true,
-                    "adminGroupObjectIDs": [ "8dda9002-1249-48ad-8620-4ee582b98f6b" ]
+                    "enablePrivateCluster": false
                 },
                 "enableRBAC": true,
                 "enablePodSecurityPolicy": false,
                 "networkProfile": {
                     "networkPlugin": "kubenet",
-                    "loadBalancerSku": "Standard",
-                    "outboundType": "userDefinedRouting",
-                    "networkPolicy": "calico"
+                    "loadBalancerSku": "Standard"
                 },
                 "agentPoolProfiles": [
                     {
                         "name": "default",
-                        "count": 2,
+                        "count": 1,
                         "maxCount": 4,
                         "minCount": 1,
                         "vmSize": "Standard_DS2_v2",
                         "osDiskSizeGB": 30,
-                        "vnetSubnetID": "[parameters('spoke_virtual_network_subnet_id')]",
                         "maxPods": 30,
                         "type": "VirtualMachineScaleSets",
                         "availabilityZones": [
@@ -94,27 +63,17 @@
                         ],
                         "enableAutoScaling": true,
                         "orchestratorVersion": "[parameters('kubernetesVersion')]",
-                        "enableNodePublicIP": false,
+                        "enableNodePublicIP": true,
                         "mode": "System",
                         "osType": "Linux"
                     }
                 ],
                 "addonProfiles": {
-                    "kubeDashboard": {
-                        "enabled": false
-                    },
                     "omsagent": {
                         "enabled": true,
                         "config": {
                             "logAnalyticsWorkspaceResourceID": "[parameters('log_analytics_workspace_id')]"
                         }                    
-                    },
-                    "azurepolicy": {
-                        "config": {
-                            "version": "v2"
-                        },
-                        "enabled": true,
-                        "identity": null
                     }
                 }
             }
@@ -165,6 +124,6 @@
                     }
                 ]
             }
-        }        
+        }
     ]
 }

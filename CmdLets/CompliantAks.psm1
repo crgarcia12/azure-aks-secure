@@ -9,26 +9,35 @@ function Select-CompliantAksAccount {
     $outNull = az account set --subscription $SubscriptionId
 }
 
-function Remove-CompliantAksResourceGroupIfExist {
+function Remove-CompliantAksResourceGroups {
     [CmdletBinding()]
     Param(
-        [string] $ResourceGroupName
+        [string] $EnvironmentName,
+        [string] $Location
     )
 
-    Start-Job `
-        -ArgumentList $ResourceGroupName `
-        -Name "removing$ResourceGroupName" `
-        -ScriptBlock {
-            $ResourceGroupName = $args[0]
-            Write-Verbose "[$ResourceGroupName] Trying to get resource group $ResourceGroupName..." -Verbose
-            $group = Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction SilentlyContinue
-            if($group)
-            {
-                Write-Verbose "[$ResourceGroupName] Group $ResourceGroupName exist. killing it!" -Verbose
-                $outNull = Remove-AzResourceGroup -Name $ResourceGroupName -Force
+    $Properties = Get-CompliantAksProperties -EnvironmentName $EnvironmentName -Location $Location
+    $jobs = @()
+
+    @($Properties.HubResourceGroupName,$Properties.SpokeResourceGroupName) | ForEach-Object {
+        $ResourceGroupName = $_
+        $jobs += Start-Job `
+            -ArgumentList $ResourceGroupName `
+            -Name "removing$ResourceGroupName" `
+            -ScriptBlock {
+                $ResourceGroupName = $args[0]
+                Write-Verbose "[$ResourceGroupName] Trying to get resource group $ResourceGroupName..." -Verbose
+                $group = Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction SilentlyContinue
+                if($group)
+                {
+                    Write-Verbose "[$ResourceGroupName] Group $ResourceGroupName exist. killing it!" -Verbose
+                    $outNull = Remove-AzResourceGroup -Name $ResourceGroupName -Force
+                }
+                Write-Verbose "[$ResourceGroupName] Done trying to get resource group $ResourceGroupName." -Verbose
             }
-            Write-Verbose "[$ResourceGroupName] Done trying to get resource group $ResourceGroupName." -Verbose
     }
+
+    $jobs | Receive-Job -Wait
 }
 
 function New-CompliantAksFullDeployment {
@@ -283,8 +292,8 @@ function New-CompliantAksLandingZoneLogAnalytics {
     $Properties = $PropertiesRef.Value
 
     Write-Verbose "Creating log analytics workspace: '$($Properties.LogAnalyticsWorkspaceName)'"
-        New-AzOperationalInsightsWorkspace -Location $Properties.Location -Name $Properties.LogAnalyticsWorkspaceName -Sku Standard -ResourceGroupName $Properties.SpokeResourceGroupName -Force
-        $Properties.LogAnalyticsWorkspaceId = (get-AzOperationalInsightsWorkspace -Name $Properties.LogAnalyticsWorkspaceName -ResourceGroupName $Properties.SpokeResourceGroupName).ResourceId
+        $lganalytics = New-AzOperationalInsightsWorkspace -Location $Properties.Location -Name $Properties.LogAnalyticsWorkspaceName -Sku pergb2018 -ResourceGroupName $Properties.SpokeResourceGroupName -Force
+        $Properties.LogAnalyticsWorkspaceId = $lganalytics.ResourceId
     Write-Verbose "Done creating log analytics workspace. Id: '$($Properties.LogAnalyticsWorkspaceId)'"
 }
 
