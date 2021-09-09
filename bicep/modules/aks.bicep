@@ -1,9 +1,33 @@
-param environmentName string
-param subnetId string
+param ClusterName string
+param SubnetId string
+param logAnalyticsWorkspaceID string
+param AdminGroupObjectIDs array
+param K8sVersion string
+
+param userNodePools array = [
+  {
+    name: 'usernp01'
+    count: 1
+    vmSize: 'Standard_D4s_v3'
+    osDiskSizeGB: 100
+    osDiskType: 'Ephemeral'
+    vnetSubnetID: SubnetId
+    maxPods: 10
+    maxCount: 1
+    minCount: 1
+    enableAutoScaling: true
+    mode: 'User'
+    orchestratorVersion: K8sVersion
+    maxSurge: null
+    tags: {}
+    nodeLabels: {}
+    taints: []
+  }
+]
 
 param aksSettings object = {
   kubernetesVersion: null
-  identity: 'UserAssigned'
+  identity: 'SystemAssigned'
   networkPlugin: 'azure'
   networkPolicy: 'calico'
   serviceCidr: '172.16.0.0/22' // Must be cidr not in use any where else across the Network (Azure or Peered/On-Prem).  Can safely be used in multiple clusters - presuming this range is not broadcast/advertised in route tables.
@@ -13,7 +37,6 @@ param aksSettings object = {
   sku_tier: 'Free'				
   enableRBAC: true 
   aadProfileManaged: true
-  adminGroupObjectIDs: []
 
   outboundType: 'userDefinedRouting'
   enablePrivateCluster: true
@@ -25,10 +48,10 @@ param defaultNodePool object = {
   vmSize: 'Standard_D2s_v3'
   osDiskSizeGB: 50
   osDiskType: 'Ephemeral'
-  vnetSubnetID: subnetId
+  vnetSubnetID: SubnetId
   osType: 'Linux'
-  maxCount: 6
-  minCount: 2
+  maxCount: 1
+  minCount: 1
   enableAutoScaling: true
   type: 'VirtualMachineScaleSets'
   mode: 'System' // setting this to system type for just k8s system services
@@ -38,27 +61,12 @@ param defaultNodePool object = {
   ]
 }
 
-param userNodePools array = []
 
-// https://docs.microsoft.com/en-us/azure/templates/microsoft.operationalinsights/2020-03-01-preview/workspaces?tabs=json
-resource aksAzureMonitor 'Microsoft.OperationalInsights/workspaces@2020-03-01-preview' = {
-  name: '${environmentName}-loganalytics'
-  tags: {}
-  location: resourceGroup().location
-  properties: {
-    sku: {
-      name: 'PerGB2018'
-    }
-    retentionInDays: 30
-    workspaceCapping: {
-      dailyQuotaGb: 30
-    }
-  }
-}
+
 
 // https://docs.microsoft.com/en-us/azure/templates/microsoft.containerservice/managedclusters?tabs=json#ManagedClusterAgentPoolProfile
 resource aks 'Microsoft.ContainerService/managedClusters@2021-02-01' = {
-  name: '${environmentName}-aks'
+  name: ClusterName
   location: resourceGroup().location
   identity: {
     type: aksSettings.identity
@@ -69,12 +77,12 @@ resource aks 'Microsoft.ContainerService/managedClusters@2021-02-01' = {
   }
   properties: {
     kubernetesVersion: aksSettings.kubernetesVersion
-    dnsPrefix: aksSettings.clusterName    
+    dnsPrefix: ClusterName    
     addonProfiles: {
       omsagent: {
         enabled: true
         config: {
-          logAnalyticsWorkspaceResourceID: aksAzureMonitor.id
+          logAnalyticsWorkspaceResourceID: logAnalyticsWorkspaceID
         }
       }
     }
@@ -99,7 +107,7 @@ resource aks 'Microsoft.ContainerService/managedClusters@2021-02-01' = {
     aadProfile: {
       managed: aksSettings.aadProfileManaged
       // enableAzureRBAC: true // Cross-Tenant Azure RBAC doesn't work - must be same tenant as the cluster subscription
-      adminGroupObjectIDs: aksSettings.adminGroupObjectIDs
+      adminGroupObjectIDs: AdminGroupObjectIDs
     }
 
     autoUpgradeProfile: {}
@@ -123,7 +131,7 @@ resource aksNodepool 'Microsoft.ContainerService/managedClusters/agentPools@2021
     vmSize: nodepool.vmSize
     osDiskSizeGB: nodepool.osDiskSizeGB
     osDiskType: nodepool.osDiskType
-    vnetSubnetID: subnetId
+    vnetSubnetID: SubnetId
     maxPods: nodepool.maxPods
     osType: 'Linux'
     maxCount: nodepool.maxCount
@@ -141,4 +149,4 @@ resource aksNodepool 'Microsoft.ContainerService/managedClusters/agentPools@2021
   }
 }]
 
-output identity string = aks.identity.principalId
+output AksIdentity string = aks.identity.principalId
