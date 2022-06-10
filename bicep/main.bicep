@@ -38,3 +38,17 @@ module AksModule 'modules/aks.bicep' = {
     K8sVersion: K8sVersion
   }
 }
+
+
+module antoher 'modules/another.bicep' = {
+  name: 'asd'
+
+  params: {
+    input: '9'
+  }
+
+}
+
+resource Subnets 'Microsoft.Network/virtualNetworks/subnets@2020-11-01' = [for sn in antoher.outputs.myoutput: {
+  
+}]

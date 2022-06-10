@@ -3,10 +3,10 @@
 	"contentVersion": "1.0.0.0",
 	"parameters": {
         "EnvironmentName":{
-            "value": "crgar-aks-3"
+            "value": "crgar-aks-prv4"
         },
         "K8sVersion" : {
-            "value": "crgar-aks-3"
+            "value": "1.22.6"
         },        
         "AdminGroupObjectIDs": {
             "value": [
@@ -14,7 +14,7 @@
             ]
         },
         "RouteTableId": {
-            "value": "/subscriptions/930c11b0-5e6d-458f-b9e3-f3dda0734110/resourceGroups/crgar-aks-prv4-spoke-rg/providers/Microsoft.Network/routeTables/crgar-aks-prv4-routetable"
+            "value": "/subscriptions/930c11b0-5e6d-458f-b9e3-f3dda0734110/resourceGroups/crgar-aks-kubenetvnet/providers/Microsoft.Network/routeTables/crgar-aks-prv4-routetable"
         },
         "VnetName": {
             "value": "crgar-aks-prv4-spoke-vnet"

@@ -1,3 +1,13 @@
+$TemplateFilePath = "./arm/aks-params-template.json"
+
+function Find-CompliantAksRightPath {
+    [CmdletBinding()]
+    param()
+    if(!(Test-Path $TemplateFilePath)) {
+        Write-Error "Your path should be the root of the repo. Test-Path $TemplateFilePath" -ErrorAction Stop
+    }
+} 
+
 function Select-CompliantAksAccount {
     [CmdletBinding()]
     Param(
@@ -16,6 +26,7 @@ function Remove-CompliantAksResourceGroups {
         [string] $Location
     )
 
+    Find-CompliantAksRightPath
     $Properties = Get-CompliantAksProperties -EnvironmentName $EnvironmentName -Location $Location
     $jobs = @()
 
@@ -49,6 +60,7 @@ function New-CompliantAksFullDeployment {
     )
     $VerbosePreference = "continue"
     Write-Verbose "Starting full deployment $EnvironmentName in $Location" -Verbose
+    Find-CompliantAksRightPath
 
     $properties = Get-CompliantAksProperties -EnvironmentName $EnvironmentName -Location $Location
 
@@ -154,7 +166,7 @@ function New-CompliantAksLandingZone {
         [string] $Location
     )
     $VerbosePreference = "Continue"
-
+    Find-CompliantAksRightPath
     $Properties = Get-CompliantAksProperties -EnvironmentName $EnvironmentName -Location $Location
 
     try 
@@ -170,7 +182,7 @@ function New-CompliantAksLandingZone {
         $outNull = New-CompliantAksLandingZoneLogAnalytics -Properties ([ref]$Properties)
         $outNull = New-CompliantAksLandingZoneFirewallDeployment -Properties ([ref]$Properties)
         $outNull = New-CompliantAksLandingZoneRouteTable -Properties ([ref]$Properties)
-        $outNull = New-CompliantAksJumpBox -Properties ([ref]$Properties)
+        # $outNull = New-CompliantAksJumpBox -Properties ([ref]$Properties)
         $outNull = New-ComplianceAksApiServerDns -Properties ([ref]$Properties)
         # We try that setting permissions is as late as possible, since we need AAD to update
         # the global cache from the changes in New-CompliantAksManagedServiceIdentity
@@ -304,7 +316,7 @@ function New-CompliantAksParametersTemplateFile {
     )
 
     Write-Verbose "Getting params template file..."
-    $params = Get-Content "./arm/aks-params-template.json"
+    $params = Get-Content "$TemplateFilePath"
     $params = $params -Replace "<Location>", $Properties.Location
     $params = $params -Replace "<ClusterName>", $Properties.ClusterName
     $params = $params -Replace "<SpokeSubnetId>", $Properties.SpokeSubnets.Nodes.SubnetId
@@ -336,14 +348,16 @@ function New-CompliantAksManagedServiceIdentityPermissions {
                 -ObjectId $Properties.MsiPrincipalId `
                 -RoleDefinitionName "Contributor" `
                 -Scope "/subscriptions/$($Properties.SubscriptionId)/resourceGroups/$($Properties.SpokeResourceGroupName)" `
-                -ErrorAction Stop
+                -ErrorAction Stop `
+                -Debug
 
             Write-Verbose "Trying to assign MSI to AKS Dns..."
             $ra = New-AzRoleAssignment `
                 -ObjectId $Properties.MsiPrincipalId `
                 -RoleDefinitionName "Contributor" `
                 -Scope "/subscriptions/$($Properties.SubscriptionId)/resourceGroups/$($Properties.HubResourceGroupName)/providers/Microsoft.Network/privateDnsZones/privatelink.westeurope.azmk8s.io" `
-                -ErrorAction Stop
+                -ErrorAction Stop `
+                -Debug
 
             $retry = 0
             Write-Verbose "Done trying to assign MSI to RG..."
@@ -351,7 +365,7 @@ function New-CompliantAksManagedServiceIdentityPermissions {
         catch
         {
             Write-Verbose "Failed to assign MSI to RG. Retries: $retry"
-            Write-Error $_ -ErrorAction Continue
+            Write-Error $_.Exception -ErrorAction Continue
             $retry--
             Start-Sleep -Seconds 10
         }
@@ -393,7 +407,8 @@ function New-CompliantAksJumpBox {
         -OpenPorts "22" `
         -VirtualNetworkName $Properties.SpokeVNetName `
         -SubnetName $Properties.SpokeSubnets.JumpBox.Name `
-        -Image $imageURN
+        -Image $imageURN `
+        -Debug
 
     # Write-Verbose "Creating Windows JumpBox VM..."
     # $imageURN = "microsoftwindowsdesktop:office-365:20h2-evd-o365pp:latest"

@@ -1,5 +1,5 @@
 {
-    "$schema": "https://schema.management.azure.com/schemas/2019-08-01/deploymentTemplate.json#",
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
     "contentVersion": "1.0.0.0",
     "parameters": {
         "cluster_name": {
@@ -20,7 +20,7 @@
         },
         "kubernetesVersion": {
             "type": "String",
-            "defaultValue": "1.21.1"
+            "defaultValue": "1.22.6"
         },
         "cluster_rg_msi_id": {
             "type": "String",
@@ -33,7 +33,6 @@
         "resource_tags": {
             "type": "object",
             "defaultValue": {
-                "kubernetesVersion": "1.21.1",
                 "dns": "byodns"
             }
         }
@@ -62,7 +61,7 @@
                 "fqdnSubdomain": "crgarfqdn",
                 "apiServerAccessProfile": {
                     "enablePrivateCluster": true,
-                    "privateDNSZone": "[parameters('api_server_dns_resource_id')]"
+                    "privateDNSZone": "none"
                 },
                 "aadProfile": {
                     "managed": true,
@@ -74,18 +73,19 @@
                     "networkPlugin": "kubenet",
                     "loadBalancerSku": "Standard",
                     "outboundType": "userDefinedRouting",
-                    "networkPolicy": "calico"
+                    "networkPolicy": "calico",
+                    "podCidr": "10.244.0.0/16"
                 },
                 "agentPoolProfiles": [
                     {
                         "name": "default",
-                        "count": 2,
+                        "count": 3,
                         "maxCount": 4,
-                        "minCount": 1,
-                        "vmSize": "Standard_DS2_v2",
+                        "minCount": 3,
+                        "vmSize": "Standard_D2ds_v5",
                         "osDiskSizeGB": 30,
                         "vnetSubnetID": "[parameters('spoke_virtual_network_subnet_id')]",
-                        "maxPods": 30,
+                        "maxPods": 20,
                         "type": "VirtualMachineScaleSets",
                         "availabilityZones": [
                             "1",
